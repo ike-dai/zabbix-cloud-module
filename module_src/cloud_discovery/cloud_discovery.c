@@ -122,8 +122,8 @@ int	zbx_module_cloud_discovery(AGENT_REQUEST *request, AGENT_RESULT *result)
 	char	*secret;
 	char	*driver;
 	char	*provider;
-	char 	*name_macro = "{$INSTANCE.NAME}";
-	char 	*interface_macro = "{$INSTANCE.IP}";
+	char 	*name_macro = "{#INSTANCE.NAME}";
+	char 	*interface_macro = "{#INSTANCE.IP}";
 
 	if (request->nparam != 5)
 	{
@@ -141,6 +141,11 @@ int	zbx_module_cloud_discovery(AGENT_REQUEST *request, AGENT_RESULT *result)
 	deltacloud_initialize(&api, url, key, secret, driver, provider);
 
 	deltacloud_get_instances(&api, &instances);
+
+	if(instances==NULL){
+		SET_MSG_RESULT(result, strdup("Not discovered any instances"));
+		return SYSINFO_RET_OK;
+	}
 
 	// json format init
 	zbx_json_init(&json, ZBX_JSON_STAT_BUF_LEN);
