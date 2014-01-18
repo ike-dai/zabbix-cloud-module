@@ -30,7 +30,7 @@ static int	item_timeout = 0;
 int	zbx_module_dummy_ping(AGENT_REQUEST *request, AGENT_RESULT *result);
 int	zbx_module_dummy_echo(AGENT_REQUEST *request, AGENT_RESULT *result);
 int	zbx_module_dummy_random(AGENT_REQUEST *request, AGENT_RESULT *result);
-int	zbx_module_aws_discovery(AGENT_REQUEST *request, AGENT_RESULT *result);
+int	zbx_module_cloud_discovery(AGENT_REQUEST *request, AGENT_RESULT *result);
 
 char *name = "hoge";
 char *value = "test";
@@ -38,7 +38,7 @@ char *value = "test";
 static ZBX_METRIC keys[] =
 /*      KEY                     FLAG		FUNCTION        	TEST PARAMETERS */
 {
-	{"aws.discovery",	CF_HAVEPARAMS,	zbx_module_aws_discovery,"http://hostname/api,ABC1223DE,ZDADQWQ2133"},
+	{"cloud.discovery",	CF_HAVEPARAMS,	zbx_module_cloud_discovery,"http://hostname/api,ABC1223DE,ZDADQWQ2133"},
 	{NULL}
 };
 
@@ -109,7 +109,7 @@ ZBX_METRIC	*zbx_module_item_list()
  *          by checking value of request->nparam.                             *
  *                                                                            *
  ******************************************************************************/
-int	zbx_module_aws_discovery(AGENT_REQUEST *request, AGENT_RESULT *result)
+int	zbx_module_cloud_discovery(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
 	struct deltacloud_api api;
 	struct deltacloud_instance *instances = NULL;
