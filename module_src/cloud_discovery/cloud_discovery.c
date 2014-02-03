@@ -161,7 +161,21 @@ zbx_deltacloud_service_t	*zbx_deltacloud_get_service(const char* url, const char
 			return service;
 		}
 	}
-	return NULL;
+
+	service = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_service_t));
+
+
+	memset(service, 0, sizeof(zbx_deltacloud_service_t));
+
+	service->url = cloud_shared_strdup(url);
+	service->key = cloud_shared_strdup(key);
+	service->secret = cloud_shared_strdup(secret);
+	service->driver = cloud_shared_strdup(driver);
+	service->provider = cloud_shared_strdup(provider);
+	service->lastaccess = time(NULL);
+	service->lastcheck = time(NULL);
+
+	return service;
 }
 
 	
@@ -214,18 +228,8 @@ int	zbx_module_cloud_discovery(AGENT_REQUEST *request, AGENT_RESULT *result)
 	driver = get_rparam(request, 3);
 	provider = get_rparam(request, 4);
 
-	service = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_service_t));
-
-
-	memset(service, 0, sizeof(zbx_deltacloud_service_t));
-
-	service->url = cloud_shared_strdup(url);
-	service->key = cloud_shared_strdup(key);
-	service->secret = cloud_shared_strdup(secret);
-	service->driver = cloud_shared_strdup(driver);
-	service->provider = cloud_shared_strdup(provider);
-	service->lastaccess = time(NULL);
-	service->lastcheck = time(NULL);
+	service = zbx_deltacloud_get_service(url, key, secret, driver, provider);
+	zabbix_log(LOG_LEVEL_ERR, "-------zbx_deltacloud_get_serivce---\n");
 
 	zabbix_log(LOG_LEVEL_ERR, "-------used_size: %d---\n", cloud_mem->used_size);
 	deltacloud_initialize(&api, url, key, secret, driver, provider);
