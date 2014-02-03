@@ -142,6 +142,29 @@ static char	*cloud_shared_strdup(const char *source)
 	return ptr;
 }
 
+zbx_deltacloud_service_t	*zbx_deltacloud_get_service(const char* url, const char* key, const char* secret, const char* driver, const char* provider)
+{
+	int i;
+	zbx_deltacloud_service_t	*service = NULL;
+
+	if (NULL == deltacloud)
+	{
+		zabbix_log(LOG_LEVEL_ERR, "---Not initialized shared memory---");
+		return NULL;
+	}
+
+	for (i = 0; i < deltacloud->services.values_num; i++)
+	{
+		service = deltacloud->services.values[i];
+		if (0 == strcmp(service->url, url) && 0 == strcmp(service->key, key) && 0 == strcmp(service->secret, secret) && 0 == strcmp(service->driver, driver) && 0 == strcmp(service->provider, provider))
+		{
+			return service;
+		}
+	}
+	return NULL;
+}
+
+	
 /******************************************************************************
  *                                                                            *
  * Function: zbx_module_cloud_discovery                                       *
@@ -259,8 +282,50 @@ int	zbx_module_cloud_discovery(AGENT_REQUEST *request, AGENT_RESULT *result)
 
 int	zbx_module_cloud_instance_status(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
-	SET_STR_RESULT(result, strdup(instance->state));
-	return SYSINFO_RET_OK;
+
+	int	i;
+	char	*url;
+	char	*key;
+	char	*secret;
+	char	*driver;
+	char	*provider;
+	char	*instance_id;
+	
+	zbx_deltacloud_service_t	*service = NULL;
+	zbx_deltacloud_instance_t	*deltacloud_instance = NULL;
+
+	if (request->nparam != 6)
+	{
+		/* set optional error message */
+		SET_MSG_RESULT(result, strdup("Invalid number of parameters e.g.) cloud.instane.status[url, key, secret, driver, provider, instance_id]"));
+		return SYSINFO_RET_FAIL;
+	}
+	url = get_rparam(request, 0);
+	key = get_rparam(request, 1);
+	secret = get_rparam(request, 2);
+	driver = get_rparam(request, 3);
+	provider = get_rparam(request, 4);
+	instance_id = get_rparam(request, 5);
+
+	service = zbx_deltacloud_get_service(url, key, secret, driver, provider);
+
+	if (service == NULL)
+	{
+		SET_MSG_RESULT(result, strdup("No Data"));
+		return SYSINFO_RET_FAIL;
+	}
+	
+	for (i = 0; service->instances.values_num; i++)
+	{
+		zbx_deltacloud_instance_t *instance = service->instances.values[i];
+		if (0 == strcmp(instance->id, instance_id))
+		{
+			SET_STR_RESULT(result, strdup(instance->state));
+			return SYSINFO_RET_OK;
+		}
+	}
+	SET_MSG_RESULT(result, strdup("Not match data"));
+	return SYSINFO_RET_FAIL;
 }
 /******************************************************************************
  *                                                                            *
