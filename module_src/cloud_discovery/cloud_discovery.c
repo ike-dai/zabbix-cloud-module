@@ -32,19 +32,16 @@
 /* the variable keeps timeout setting for item processing */
 static int	item_timeout = 0;
 
-int	zbx_module_dummy_ping(AGENT_REQUEST *request, AGENT_RESULT *result);
-int	zbx_module_dummy_echo(AGENT_REQUEST *request, AGENT_RESULT *result);
-int	zbx_module_dummy_random(AGENT_REQUEST *request, AGENT_RESULT *result);
 int	zbx_module_cloud_discovery(AGENT_REQUEST *request, AGENT_RESULT *result);
+int	zbx_module_cloud_monitor(AGENT_REQUEST *request, AGENT_RESULT *result);
+int	zbx_module_cloud_instance_list(AGENT_REQUEST *request, AGENT_RESULT *result);
 int	zbx_module_cloud_instance_status(AGENT_REQUEST *request, AGENT_RESULT *result);
 
 static zbx_mem_info_t   *cloud_mem = NULL;
 
 ZBX_MEM_FUNC_IMPL(__cloud, cloud_mem);
-struct deltacloud_api api;
-struct deltacloud_instance *instance = NULL;
-struct deltacloud_driver *drivers = NULL;
-struct deltacloud_driver_provider *providers = NULL;
+//struct deltacloud_driver *drivers = NULL;
+//struct deltacloud_driver_provider *providers = NULL;
 
 //////
 
@@ -70,6 +67,8 @@ zbx_deltacloud_service_t;
 typedef struct deltacloud_instance zbx_deltacloud_instance_t;
 
 static zbx_deltacloud_t	*deltacloud = NULL; 
+static void     cloud_service_shared_free(zbx_deltacloud_service_t *service);
+static void	cloud_instance_shared_free(zbx_deltacloud_instance_t *instance);
 
 #define CLOUD_VECTOR_CREATE(ref, type) zbx_vector_##type##_create_ext(ref, __cloud_mem_malloc_func, __cloud_mem_realloc_func, __cloud_mem_free_func)
 
@@ -78,7 +77,8 @@ static zbx_deltacloud_t	*deltacloud = NULL;
 static ZBX_METRIC keys[] =
 /*      KEY                     FLAG		FUNCTION        	TEST PARAMETERS */
 {
-	{"cloud.discovery",	CF_HAVEPARAMS,	zbx_module_cloud_discovery,"http://hostname/api,ABC1223DE,ZDADQWQ2133"},
+	{"cloud.monitor",	CF_HAVEPARAMS,	zbx_module_cloud_monitor,"http://hostname/api,ABC1223DE,ZDADQWQ2133"},
+	{"cloud.instance.list",	CF_HAVEPARAMS,	zbx_module_cloud_instance_list,"http://hostname/api,ABC1223DE,ZDADQWQ2133"},
 	{"cloud.instance.status",	CF_HAVEPARAMS,	zbx_module_cloud_instance_status,"http://hostname/api,ABC1223DE,ZDADQWQ2133, instance_id"},
 	{NULL}
 };
@@ -164,7 +164,6 @@ zbx_deltacloud_service_t	*zbx_deltacloud_get_service(const char* url, const char
 
 	service = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_service_t));
 
-
 	memset(service, 0, sizeof(zbx_deltacloud_service_t));
 
 	service->url = cloud_shared_strdup(url);
@@ -174,16 +173,17 @@ zbx_deltacloud_service_t	*zbx_deltacloud_get_service(const char* url, const char
 	service->provider = cloud_shared_strdup(provider);
 	service->lastaccess = time(NULL);
 	service->lastcheck = time(NULL);
+	CLOUD_VECTOR_CREATE(&service->instances, ptr);
 
+	zbx_vector_ptr_append(&deltacloud->services, service);
 	return service;
 }
 
-	
 /******************************************************************************
  *                                                                            *
- * Function: zbx_module_cloud_discovery                                       *
+ * Function: zbx_module_cloud_instance_list                                   *
  *                                                                            *
- * Purpose: Discovering cloud instance lists from deltacloud                  *
+ * Purpose: Discovering cloud instances list from deltacloud                  *
  *                                                                            *
  * Parameters: request - structure that contains item key and parameters      *
  *              request->key - item key without parameters                    *
@@ -203,8 +203,9 @@ zbx_deltacloud_service_t	*zbx_deltacloud_get_service(const char* url, const char
  *          by checking value of request->nparam.                             *
  *                                                                            *
  ******************************************************************************/
-int	zbx_module_cloud_discovery(AGENT_REQUEST *request, AGENT_RESULT *result)
+int	zbx_module_cloud_instance_list(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
+	int i;
 	struct zbx_json json;
 	char	*url;
 	char	*key;
@@ -212,14 +213,14 @@ int	zbx_module_cloud_discovery(AGENT_REQUEST *request, AGENT_RESULT *result)
 	char	*driver;
 	char	*provider;
 	char 	*name_macro = "{#INSTANCE.NAME}";
-	char 	*interface_macro = "{#INSTANCE.IP}";
+	char 	*id_macro = "{#INSTANCE.ID}";
+//	char 	*interface_macro = "{#INSTANCE.IP}";
 	zbx_deltacloud_service_t	*service = NULL;
-	zbx_deltacloud_instance_t	*deltacloud_instance = NULL;
 
 	if (request->nparam != 5)
 	{
 		/* set optional error message */
-		SET_MSG_RESULT(result, strdup("Invalid number of parameters e.x.) cloud.discovery[url, key, secret, driver, provider]"));
+		SET_MSG_RESULT(result, strdup("Invalid number of parameters e.g.) cloud.instance.list[url, key, secret, driver, provider]"));
 		return SYSINFO_RET_FAIL;
 	}
 	url = get_rparam(request, 0);
@@ -229,16 +230,9 @@ int	zbx_module_cloud_discovery(AGENT_REQUEST *request, AGENT_RESULT *result)
 	provider = get_rparam(request, 4);
 
 	service = zbx_deltacloud_get_service(url, key, secret, driver, provider);
-	zabbix_log(LOG_LEVEL_ERR, "-------zbx_deltacloud_get_serivce---\n");
 
-	zabbix_log(LOG_LEVEL_ERR, "-------used_size: %d---\n", cloud_mem->used_size);
-	deltacloud_initialize(&api, url, key, secret, driver, provider);
-
-	deltacloud_get_instances(&api, &instance);
-	zabbix_log(LOG_LEVEL_ERR, "-------instances->state: %s---\n", instance->state);
-
-	if(instance==NULL){
-		SET_MSG_RESULT(result, strdup("Not discovered any instances"));
+	if(&service->instances==NULL){
+		SET_MSG_RESULT(result, strdup("No instances"));
 		return SYSINFO_RET_OK;
 	}
 	
@@ -246,7 +240,68 @@ int	zbx_module_cloud_discovery(AGENT_REQUEST *request, AGENT_RESULT *result)
 	zbx_json_init(&json, ZBX_JSON_STAT_BUF_LEN);
 	// Add "data":[] for LLD format
 	zbx_json_addarray(&json, ZBX_PROTO_TAG_DATA);
-	CLOUD_VECTOR_CREATE(&service->instances, ptr);
+	for (i = 0; service->instances.values_num; i++)
+	{
+		//deltacloud_instance = NULL;
+		zbx_deltacloud_instance_t *instance = service->instances.values[i];
+		if (NULL == instance)
+		{
+			zbx_json_close(&json);
+			break;
+		}
+		zbx_json_addobject(&json, NULL);
+		if (NULL != instance->name)
+			zbx_json_addstring(&json, name_macro, instance->name, ZBX_JSON_TYPE_STRING);
+		if (NULL != instance->id)
+			zbx_json_addstring(&json, id_macro, instance->id, ZBX_JSON_TYPE_STRING);
+/*		if(instance->public_addresses){
+			zbx_json_addstring(&json, interface_macro, instance->public_addresses->address, ZBX_JSON_TYPE_STRING);
+		}
+*/		zbx_json_close(&json);
+	}
+
+	SET_STR_RESULT(result, strdup(json.buffer));
+	zbx_json_free(&json);
+	
+	return SYSINFO_RET_OK;
+}
+	
+int	zbx_module_cloud_monitor(AGENT_REQUEST *request, AGENT_RESULT *result)
+{
+	int i;
+	char	*url;
+	char	*key;
+	char	*secret;
+	char	*driver;
+	char	*provider;
+	zbx_deltacloud_service_t	*service = NULL;
+	zbx_deltacloud_instance_t	*deltacloud_instance = NULL;
+	struct deltacloud_api api;
+	struct deltacloud_instance *instance = NULL;
+
+	if (request->nparam != 5)
+	{
+		/* set optional error message */
+		SET_MSG_RESULT(result, strdup("Invalid number of parameters e.g.) cloud.monitor[url, key, secret, driver, provider]"));
+		return SYSINFO_RET_FAIL;
+	}
+	url = get_rparam(request, 0);
+	key = get_rparam(request, 1);
+	secret = get_rparam(request, 2);
+	driver = get_rparam(request, 3);
+	provider = get_rparam(request, 4);
+
+	service = zbx_deltacloud_get_service(url, key, secret, driver, provider);
+	zbx_vector_ptr_clean(&service->instances, (zbx_mem_free_func_t)cloud_instance_shared_free);
+	deltacloud_initialize(&api, url, key, secret, driver, provider);
+
+	deltacloud_get_instances(&api, &instance);
+
+	if(instance==NULL){
+		SET_UI64_RESULT(result, 0);
+		return SYSINFO_RET_OK;
+	}
+	
 	while(1){
 		deltacloud_instance = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_instance_t));
 		zabbix_log(LOG_LEVEL_ERR, "-------used_size: %d---\n", cloud_mem->used_size);
@@ -262,25 +317,13 @@ int	zbx_module_cloud_discovery(AGENT_REQUEST *request, AGENT_RESULT *result)
 		deltacloud_instance->launch_time = cloud_shared_strdup(instance->launch_time);
 		zbx_vector_ptr_append(&service->instances, deltacloud_instance);
 		zabbix_log(LOG_LEVEL_ERR, "-------used_size: %d---\n", cloud_mem->used_size);
-		//deltacloud_instance = NULL;
-
-		zabbix_log(LOG_LEVEL_ERR, "-------used_size: %d---\n", cloud_mem->used_size);
-		zbx_json_addobject(&json, NULL);
-		zbx_json_addstring(&json, name_macro, instance->id, ZBX_JSON_TYPE_STRING);
-		if(instance->public_addresses){
-			zbx_json_addstring(&json, interface_macro, instance->public_addresses->address, ZBX_JSON_TYPE_STRING);
-		}
-		zbx_json_close(&json);
 		instance = instance->next;
 		if(instance == NULL){
 			break;
 		}
 	}
 
-	zbx_vector_ptr_append(&deltacloud->services, service);
-	SET_STR_RESULT(result, strdup(json.buffer));
-	zbx_json_free(&json);
-	
+	SET_UI64_RESULT(result, 1);
 	return SYSINFO_RET_OK;
 }
 
@@ -356,9 +399,7 @@ int	zbx_module_init()
 	zabbix_log(LOG_LEVEL_ERR, "-------shm_key : %d---\n", shm_key);
 	zabbix_log(LOG_LEVEL_ERR, "-------total_size: %d---\n", cloud_mem->total_size);
 	zabbix_log(LOG_LEVEL_ERR, "-------used_size: %d---\n", cloud_mem->used_size);
-	//instances = __cloud_mem_malloc_func(NULL, sizeof(cloud_instance));	
 	deltacloud = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_t));	
-	//instances = __cloud_mem_malloc_func(NULL, sizeof(int));	
 	zabbix_log(LOG_LEVEL_ERR, "-------used_size: %d---\n", cloud_mem->used_size);
 	memset(deltacloud, 0, sizeof(zbx_deltacloud_t));
 	zabbix_log(LOG_LEVEL_ERR, "-------used_size: %d---\n", cloud_mem->used_size);
@@ -366,6 +407,52 @@ int	zbx_module_init()
 	CLOUD_VECTOR_CREATE(&deltacloud->services, ptr);
 
 	return ZBX_MODULE_OK;
+}
+
+static void	cloud_instance_shared_free(zbx_deltacloud_instance_t *instance)
+{
+	if (NULL != instance->href)
+		__cloud_mem_free_func(instance->href);
+	if (NULL != instance->id)
+		__cloud_mem_free_func(instance->id);
+	if (NULL != instance->name)
+		__cloud_mem_free_func(instance->name);
+	if (NULL != instance->owner_id)
+		__cloud_mem_free_func(instance->owner_id);
+	if (NULL != instance->image_id)
+		__cloud_mem_free_func(instance->image_id);
+	if (NULL != instance->image_href)
+		__cloud_mem_free_func(instance->image_href);
+	if (NULL != instance->realm_id)
+		__cloud_mem_free_func(instance->realm_id);
+	if (NULL != instance->realm_href)
+		__cloud_mem_free_func(instance->realm_href);
+	if (NULL != instance->state)
+		__cloud_mem_free_func(instance->state);
+	if (NULL != instance->launch_time)
+		__cloud_mem_free_func(instance->launch_time);
+	__cloud_mem_free_func(instance);
+	zabbix_log(LOG_LEVEL_ERR, "--free instance-----used_size: %d---\n", cloud_mem->used_size);
+}
+
+static void	cloud_service_shared_free(zbx_deltacloud_service_t *service)
+{
+	int i;
+	if (NULL != service->url)
+		__cloud_mem_free_func(service->url);
+	if (NULL != service->key)
+		__cloud_mem_free_func(service->key);
+	if (NULL != service->secret)
+		__cloud_mem_free_func(service->secret);
+	if (NULL != service->driver)
+		__cloud_mem_free_func(service->driver);
+	if (NULL != service->provider)
+		__cloud_mem_free_func(service->provider);
+
+	zbx_vector_ptr_clean(&service->instances, (zbx_mem_free_func_t)cloud_instance_shared_free);
+	zbx_vector_ptr_destroy(&service->instances);
+	__cloud_mem_free_func(service);
+	zabbix_log(LOG_LEVEL_ERR, "--free service-----used_size: %d---\n", cloud_mem->used_size);
 }
 
 /******************************************************************************
@@ -381,7 +468,17 @@ int	zbx_module_init()
  ******************************************************************************/
 int	zbx_module_uninit()
 {
+	int i;
+
+	if (NULL != deltacloud)
+	{
+		zbx_vector_ptr_clean(&deltacloud->services, (zbx_mem_free_func_t)cloud_service_shared_free);
+		zbx_vector_ptr_destroy(&deltacloud->services);
+		__cloud_mem_free_func(deltacloud);
+		zabbix_log(LOG_LEVEL_ERR, "--free deltacloud-----used_size: %d---\n", cloud_mem->used_size);
+	}
 	zbx_mem_destroy(cloud_mem);
+	zabbix_log(LOG_LEVEL_ERR, "----destroy cloud_mem---used_size: %d---\n", cloud_mem->used_size);
 
 	return ZBX_MODULE_OK;
 }
