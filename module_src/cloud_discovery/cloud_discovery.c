@@ -29,6 +29,14 @@
 #include <libdeltacloud/libdeltacloud.h>
 
 #define ZBX_IPC_CLOUD_ID 'c'
+#define NAME_MACRO "{#INSTANCE.NAME}"
+#define ID_MACRO "{#INSTANCE.ID}"
+#define PUBLIC_ADDR_MACRO "{#INSTANCE.PUBLIC_ADDR}"
+#define PRIVATE_ADDR_MACRO "{#INSTANCE.PRIVATE_ADDR}"
+#define CONFIG_FILE "/usr/local/zabbix/2.1.7/etc/zabbix_agentd.conf"
+#define MEM_SIZE 1048576
+#define EXPIRE_TIME 60*60*24
+
 /* the variable keeps timeout setting for item processing */
 static int	item_timeout = 0;
 
@@ -36,6 +44,15 @@ int	zbx_module_cloud_discovery(AGENT_REQUEST *request, AGENT_RESULT *result);
 int	zbx_module_cloud_monitor(AGENT_REQUEST *request, AGENT_RESULT *result);
 int	zbx_module_cloud_instance_list(AGENT_REQUEST *request, AGENT_RESULT *result);
 int	zbx_module_cloud_instance_status(AGENT_REQUEST *request, AGENT_RESULT *result);
+int	zbx_module_cloud_instance_owner_id(AGENT_REQUEST *request, AGENT_RESULT *result);
+int	zbx_module_cloud_instance_image_id(AGENT_REQUEST *request, AGENT_RESULT *result);
+int	zbx_module_cloud_instance_image_href(AGENT_REQUEST *request, AGENT_RESULT *result);
+int	zbx_module_cloud_instance_realm_id(AGENT_REQUEST *request, AGENT_RESULT *result);
+int	zbx_module_cloud_instance_realm_href(AGENT_REQUEST *request, AGENT_RESULT *result);
+int	zbx_module_cloud_instance_launch_time(AGENT_REQUEST *request, AGENT_RESULT *result);
+int	zbx_module_cloud_instance_hwp_href(AGENT_REQUEST *request, AGENT_RESULT *result);
+int	zbx_module_cloud_instance_hwp_id(AGENT_REQUEST *request, AGENT_RESULT *result);
+int	zbx_module_cloud_instance_hwp_name(AGENT_REQUEST *request, AGENT_RESULT *result);
 
 static zbx_mem_info_t   *cloud_mem = NULL;
 
@@ -100,6 +117,15 @@ static ZBX_METRIC keys[] =
 	{"cloud.monitor",	CF_HAVEPARAMS,	zbx_module_cloud_monitor,"http://hostname/api,ABC1223DE,ZDADQWQ2133"},
 	{"cloud.instance.list",	CF_HAVEPARAMS,	zbx_module_cloud_instance_list,"http://hostname/api,ABC1223DE,ZDADQWQ2133"},
 	{"cloud.instance.status",	CF_HAVEPARAMS,	zbx_module_cloud_instance_status,"http://hostname/api,ABC1223DE,ZDADQWQ2133, instance_id"},
+	{"cloud.instance.owner_id",	CF_HAVEPARAMS,	zbx_module_cloud_instance_owner_id,"http://hostname/api,ABC1223DE,ZDADQWQ2133, instance_id"},
+	{"cloud.instance.image_id",	CF_HAVEPARAMS,	zbx_module_cloud_instance_image_id,"http://hostname/api,ABC1223DE,ZDADQWQ2133, instance_id"},
+	{"cloud.instance.image_href",	CF_HAVEPARAMS,	zbx_module_cloud_instance_image_href,"http://hostname/api,ABC1223DE,ZDADQWQ2133, instance_id"},
+	{"cloud.instance.realm_id",	CF_HAVEPARAMS,	zbx_module_cloud_instance_realm_id,"http://hostname/api,ABC1223DE,ZDADQWQ2133, instance_id"},
+	{"cloud.instance.realm_href",	CF_HAVEPARAMS,	zbx_module_cloud_instance_realm_href,"http://hostname/api,ABC1223DE,ZDADQWQ2133, instance_id"},
+	{"cloud.instance.launch_time",	CF_HAVEPARAMS,	zbx_module_cloud_instance_launch_time,"http://hostname/api,ABC1223DE,ZDADQWQ2133, instance_id"},
+	{"cloud.instance.hwp.href",	CF_HAVEPARAMS,	zbx_module_cloud_instance_hwp_href,"http://hostname/api,ABC1223DE,ZDADQWQ2133, instance_id"},
+	{"cloud.instance.hwp.id",	CF_HAVEPARAMS,	zbx_module_cloud_instance_hwp_id,"http://hostname/api,ABC1223DE,ZDADQWQ2133, instance_id"},
+	{"cloud.instance.hwp.name",	CF_HAVEPARAMS,	zbx_module_cloud_instance_hwp_name,"http://hostname/api,ABC1223DE,ZDADQWQ2133, instance_id"},
 	{NULL}
 };
 
@@ -162,8 +188,6 @@ static char	*cloud_shared_strdup(const char *source)
 	return ptr;
 }
 
-//static zbx_deltacloud_hardware_profile_t *cloud_hardware_profile_shared_dup(const deltacloud_hardware_profile *src)
-//static zbx_deltacloud_hardware_profile_t *cloud_hardware_profile_shared_dup(const deltacloud_hardware_profile *src)
 static zbx_deltacloud_hardware_profile_t *cloud_hardware_profile_shared_dup(const struct deltacloud_hardware_profile *src)
 {
 	zbx_deltacloud_hardware_profile_t	*hardware_profile;
@@ -246,10 +270,6 @@ int	zbx_module_cloud_instance_list(AGENT_REQUEST *request, AGENT_RESULT *result)
 	char	*secret;
 	char	*driver;
 	char	*provider;
-	char 	*name_macro = "{#INSTANCE.NAME}";
-	char 	*id_macro = "{#INSTANCE.ID}";
-	char 	*public_addr_macro = "{#INSTANCE.PUBLIC_ADDR}";
-	char 	*private_addr_macro = "{#INSTANCE.PRIVATE_ADDR}";
 	zbx_deltacloud_service_t	*service = NULL;
 
 	if (request->nparam != 5)
@@ -286,20 +306,20 @@ int	zbx_module_cloud_instance_list(AGENT_REQUEST *request, AGENT_RESULT *result)
 		}
 		zbx_json_addobject(&json, NULL);
 		if (NULL != instance->name)
-			zbx_json_addstring(&json, name_macro, instance->name, ZBX_JSON_TYPE_STRING);
+			zbx_json_addstring(&json, NAME_MACRO, instance->name, ZBX_JSON_TYPE_STRING);
 		if (NULL != instance->id)
-			zbx_json_addstring(&json, id_macro, instance->id, ZBX_JSON_TYPE_STRING);
+			zbx_json_addstring(&json, ID_MACRO, instance->id, ZBX_JSON_TYPE_STRING);
 		for (j = 0; instance->public_addresses.values_num; j++)
 		{
 			zbx_deltacloud_address_t *address = instance->public_addresses.values[j];
-			zbx_json_addstring(&json, public_addr_macro, address->address, ZBX_JSON_TYPE_STRING);
+			zbx_json_addstring(&json, PUBLIC_ADDR_MACRO, address->address, ZBX_JSON_TYPE_STRING);
 			break; /* ToDo: multi address support */
 		}
 		
 		for (j = 0; instance->private_addresses.values_num; j++)
 		{
 			zbx_deltacloud_address_t *address = instance->private_addresses.values[j];
-			zbx_json_addstring(&json, private_addr_macro, address->address, ZBX_JSON_TYPE_STRING);
+			zbx_json_addstring(&json, PRIVATE_ADDR_MACRO, address->address, ZBX_JSON_TYPE_STRING);
 			break; /* ToDo: multi address support */
 		}
 		zbx_json_close(&json);
@@ -438,6 +458,430 @@ int	zbx_module_cloud_instance_status(AGENT_REQUEST *request, AGENT_RESULT *resul
 	SET_MSG_RESULT(result, strdup("Not match data"));
 	return SYSINFO_RET_FAIL;
 }
+
+int	zbx_module_cloud_instance_image_id(AGENT_REQUEST *request, AGENT_RESULT *result)
+{
+
+	int	i;
+	char	*url;
+	char	*key;
+	char	*secret;
+	char	*driver;
+	char	*provider;
+	char	*instance_id;
+	
+	zbx_deltacloud_service_t	*service = NULL;
+	zbx_deltacloud_instance_t	*deltacloud_instance = NULL;
+
+	if (request->nparam != 6)
+	{
+		/* set optional error message */
+		SET_MSG_RESULT(result, strdup("Invalid number of parameters e.g.) cloud.instane.image_id[url, key, secret, driver, provider, instance_id]"));
+		return SYSINFO_RET_FAIL;
+	}
+	url = get_rparam(request, 0);
+	key = get_rparam(request, 1);
+	secret = get_rparam(request, 2);
+	driver = get_rparam(request, 3);
+	provider = get_rparam(request, 4);
+	instance_id = get_rparam(request, 5);
+
+	service = zbx_deltacloud_get_service(url, key, secret, driver, provider);
+
+	if (service == NULL)
+	{
+		SET_MSG_RESULT(result, strdup("No Data"));
+		return SYSINFO_RET_FAIL;
+	}
+	
+	for (i = 0; service->instances.values_num; i++)
+	{
+		zbx_deltacloud_instance_t *instance = service->instances.values[i];
+		if (0 == strcmp(instance->id, instance_id))
+		{
+			SET_STR_RESULT(result, strdup(instance->image_id));
+			return SYSINFO_RET_OK;
+		}
+	}
+	SET_MSG_RESULT(result, strdup("Not match data"));
+	return SYSINFO_RET_FAIL;
+}
+int	zbx_module_cloud_instance_owner_id(AGENT_REQUEST *request, AGENT_RESULT *result)
+{
+
+	int	i;
+	char	*url;
+	char	*key;
+	char	*secret;
+	char	*driver;
+	char	*provider;
+	char	*instance_id;
+	
+	zbx_deltacloud_service_t	*service = NULL;
+	zbx_deltacloud_instance_t	*deltacloud_instance = NULL;
+
+	if (request->nparam != 6)
+	{
+		/* set optional error message */
+		SET_MSG_RESULT(result, strdup("Invalid number of parameters e.g.) cloud.instane.owner_id[url, key, secret, driver, provider, instance_id]"));
+		return SYSINFO_RET_FAIL;
+	}
+	url = get_rparam(request, 0);
+	key = get_rparam(request, 1);
+	secret = get_rparam(request, 2);
+	driver = get_rparam(request, 3);
+	provider = get_rparam(request, 4);
+	instance_id = get_rparam(request, 5);
+
+	service = zbx_deltacloud_get_service(url, key, secret, driver, provider);
+
+	if (service == NULL)
+	{
+		SET_MSG_RESULT(result, strdup("No Data"));
+		return SYSINFO_RET_FAIL;
+	}
+	
+	for (i = 0; service->instances.values_num; i++)
+	{
+		zbx_deltacloud_instance_t *instance = service->instances.values[i];
+		if (0 == strcmp(instance->id, instance_id))
+		{
+			SET_STR_RESULT(result, strdup(instance->owner_id));
+			return SYSINFO_RET_OK;
+		}
+	}
+	SET_MSG_RESULT(result, strdup("Not match data"));
+	return SYSINFO_RET_FAIL;
+}
+int	zbx_module_cloud_instance_image_href(AGENT_REQUEST *request, AGENT_RESULT *result)
+{
+
+	int	i;
+	char	*url;
+	char	*key;
+	char	*secret;
+	char	*driver;
+	char	*provider;
+	char	*instance_id;
+	
+	zbx_deltacloud_service_t	*service = NULL;
+	zbx_deltacloud_instance_t	*deltacloud_instance = NULL;
+
+	if (request->nparam != 6)
+	{
+		/* set optional error message */
+		SET_MSG_RESULT(result, strdup("Invalid number of parameters e.g.) cloud.instane.image_href[url, key, secret, driver, provider, instance_id]"));
+		return SYSINFO_RET_FAIL;
+	}
+	url = get_rparam(request, 0);
+	key = get_rparam(request, 1);
+	secret = get_rparam(request, 2);
+	driver = get_rparam(request, 3);
+	provider = get_rparam(request, 4);
+	instance_id = get_rparam(request, 5);
+
+	service = zbx_deltacloud_get_service(url, key, secret, driver, provider);
+
+	if (service == NULL)
+	{
+		SET_MSG_RESULT(result, strdup("No Data"));
+		return SYSINFO_RET_FAIL;
+	}
+	
+	for (i = 0; service->instances.values_num; i++)
+	{
+		zbx_deltacloud_instance_t *instance = service->instances.values[i];
+		if (0 == strcmp(instance->id, instance_id))
+		{
+			SET_STR_RESULT(result, strdup(instance->image_href));
+			return SYSINFO_RET_OK;
+		}
+	}
+	SET_MSG_RESULT(result, strdup("Not match data"));
+	return SYSINFO_RET_FAIL;
+}
+int	zbx_module_cloud_instance_realm_id(AGENT_REQUEST *request, AGENT_RESULT *result)
+{
+
+	int	i;
+	char	*url;
+	char	*key;
+	char	*secret;
+	char	*driver;
+	char	*provider;
+	char	*instance_id;
+	
+	zbx_deltacloud_service_t	*service = NULL;
+	zbx_deltacloud_instance_t	*deltacloud_instance = NULL;
+
+	if (request->nparam != 6)
+	{
+		/* set optional error message */
+		SET_MSG_RESULT(result, strdup("Invalid number of parameters e.g.) cloud.instane.realm_id[url, key, secret, driver, provider, instance_id]"));
+		return SYSINFO_RET_FAIL;
+	}
+	url = get_rparam(request, 0);
+	key = get_rparam(request, 1);
+	secret = get_rparam(request, 2);
+	driver = get_rparam(request, 3);
+	provider = get_rparam(request, 4);
+	instance_id = get_rparam(request, 5);
+
+	service = zbx_deltacloud_get_service(url, key, secret, driver, provider);
+
+	if (service == NULL)
+	{
+		SET_MSG_RESULT(result, strdup("No Data"));
+		return SYSINFO_RET_FAIL;
+	}
+	
+	for (i = 0; service->instances.values_num; i++)
+	{
+		zbx_deltacloud_instance_t *instance = service->instances.values[i];
+		if (0 == strcmp(instance->id, instance_id))
+		{
+			SET_STR_RESULT(result, strdup(instance->realm_id));
+			return SYSINFO_RET_OK;
+		}
+	}
+	SET_MSG_RESULT(result, strdup("Not match data"));
+	return SYSINFO_RET_FAIL;
+}
+int	zbx_module_cloud_instance_realm_href(AGENT_REQUEST *request, AGENT_RESULT *result)
+{
+
+	int	i;
+	char	*url;
+	char	*key;
+	char	*secret;
+	char	*driver;
+	char	*provider;
+	char	*instance_id;
+	
+	zbx_deltacloud_service_t	*service = NULL;
+	zbx_deltacloud_instance_t	*deltacloud_instance = NULL;
+
+	if (request->nparam != 6)
+	{
+		/* set optional error message */
+		SET_MSG_RESULT(result, strdup("Invalid number of parameters e.g.) cloud.instane.realm_href[url, key, secret, driver, provider, instance_id]"));
+		return SYSINFO_RET_FAIL;
+	}
+	url = get_rparam(request, 0);
+	key = get_rparam(request, 1);
+	secret = get_rparam(request, 2);
+	driver = get_rparam(request, 3);
+	provider = get_rparam(request, 4);
+	instance_id = get_rparam(request, 5);
+
+	service = zbx_deltacloud_get_service(url, key, secret, driver, provider);
+
+	if (service == NULL)
+	{
+		SET_MSG_RESULT(result, strdup("No Data"));
+		return SYSINFO_RET_FAIL;
+	}
+	
+	for (i = 0; service->instances.values_num; i++)
+	{
+		zbx_deltacloud_instance_t *instance = service->instances.values[i];
+		if (0 == strcmp(instance->id, instance_id))
+		{
+			SET_STR_RESULT(result, strdup(instance->realm_href));
+			return SYSINFO_RET_OK;
+		}
+	}
+	SET_MSG_RESULT(result, strdup("Not match data"));
+	return SYSINFO_RET_FAIL;
+}
+int	zbx_module_cloud_instance_launch_time(AGENT_REQUEST *request, AGENT_RESULT *result)
+{
+
+	int	i;
+	char	*url;
+	char	*key;
+	char	*secret;
+	char	*driver;
+	char	*provider;
+	char	*instance_id;
+	
+	zbx_deltacloud_service_t	*service = NULL;
+	zbx_deltacloud_instance_t	*deltacloud_instance = NULL;
+
+	if (request->nparam != 6)
+	{
+		/* set optional error message */
+		SET_MSG_RESULT(result, strdup("Invalid number of parameters e.g.) cloud.instane.launch_time[url, key, secret, driver, provider, instance_id]"));
+		return SYSINFO_RET_FAIL;
+	}
+	url = get_rparam(request, 0);
+	key = get_rparam(request, 1);
+	secret = get_rparam(request, 2);
+	driver = get_rparam(request, 3);
+	provider = get_rparam(request, 4);
+	instance_id = get_rparam(request, 5);
+
+	service = zbx_deltacloud_get_service(url, key, secret, driver, provider);
+
+	if (service == NULL)
+	{
+		SET_MSG_RESULT(result, strdup("No Data"));
+		return SYSINFO_RET_FAIL;
+	}
+	
+	for (i = 0; service->instances.values_num; i++)
+	{
+		zbx_deltacloud_instance_t *instance = service->instances.values[i];
+		if (0 == strcmp(instance->id, instance_id))
+		{
+			SET_STR_RESULT(result, strdup(instance->launch_time));
+			return SYSINFO_RET_OK;
+		}
+	}
+	SET_MSG_RESULT(result, strdup("Not match data"));
+	return SYSINFO_RET_FAIL;
+}
+int	zbx_module_cloud_instance_hwp_href(AGENT_REQUEST *request, AGENT_RESULT *result)
+{
+
+	int	i;
+	char	*url;
+	char	*key;
+	char	*secret;
+	char	*driver;
+	char	*provider;
+	char	*instance_id;
+	
+	zbx_deltacloud_service_t	*service = NULL;
+	zbx_deltacloud_instance_t	*deltacloud_instance = NULL;
+
+	if (request->nparam != 6)
+	{
+		/* set optional error message */
+		SET_MSG_RESULT(result, strdup("Invalid number of parameters e.g.) cloud.instane.hwp.href[url, key, secret, driver, provider, instance_id]"));
+		return SYSINFO_RET_FAIL;
+	}
+	url = get_rparam(request, 0);
+	key = get_rparam(request, 1);
+	secret = get_rparam(request, 2);
+	driver = get_rparam(request, 3);
+	provider = get_rparam(request, 4);
+	instance_id = get_rparam(request, 5);
+
+	service = zbx_deltacloud_get_service(url, key, secret, driver, provider);
+
+	if (service == NULL)
+	{
+		SET_MSG_RESULT(result, strdup("No Data"));
+		return SYSINFO_RET_FAIL;
+	}
+	
+	for (i = 0; service->instances.values_num; i++)
+	{
+		zbx_deltacloud_instance_t *instance = service->instances.values[i];
+		if (0 == strcmp(instance->id, instance_id))
+		{
+			SET_STR_RESULT(result, strdup(instance->hwp->href));
+			return SYSINFO_RET_OK;
+		}
+	}
+	SET_MSG_RESULT(result, strdup("Not match data"));
+	return SYSINFO_RET_FAIL;
+}
+int	zbx_module_cloud_instance_hwp_id(AGENT_REQUEST *request, AGENT_RESULT *result)
+{
+
+	int	i;
+	char	*url;
+	char	*key;
+	char	*secret;
+	char	*driver;
+	char	*provider;
+	char	*instance_id;
+	
+	zbx_deltacloud_service_t	*service = NULL;
+	zbx_deltacloud_instance_t	*deltacloud_instance = NULL;
+
+	if (request->nparam != 6)
+	{
+		/* set optional error message */
+		SET_MSG_RESULT(result, strdup("Invalid number of parameters e.g.) cloud.instane.hwp.id[url, key, secret, driver, provider, instance_id]"));
+		return SYSINFO_RET_FAIL;
+	}
+	url = get_rparam(request, 0);
+	key = get_rparam(request, 1);
+	secret = get_rparam(request, 2);
+	driver = get_rparam(request, 3);
+	provider = get_rparam(request, 4);
+	instance_id = get_rparam(request, 5);
+
+	service = zbx_deltacloud_get_service(url, key, secret, driver, provider);
+
+	if (service == NULL)
+	{
+		SET_MSG_RESULT(result, strdup("No Data"));
+		return SYSINFO_RET_FAIL;
+	}
+	
+	for (i = 0; service->instances.values_num; i++)
+	{
+		zbx_deltacloud_instance_t *instance = service->instances.values[i];
+		if (0 == strcmp(instance->id, instance_id))
+		{
+			SET_STR_RESULT(result, strdup(instance->hwp->id));
+			return SYSINFO_RET_OK;
+		}
+	}
+	SET_MSG_RESULT(result, strdup("Not match data"));
+	return SYSINFO_RET_FAIL;
+}
+int	zbx_module_cloud_instance_hwp_name(AGENT_REQUEST *request, AGENT_RESULT *result)
+{
+
+	int	i;
+	char	*url;
+	char	*key;
+	char	*secret;
+	char	*driver;
+	char	*provider;
+	char	*instance_id;
+	
+	zbx_deltacloud_service_t	*service = NULL;
+	zbx_deltacloud_instance_t	*deltacloud_instance = NULL;
+
+	if (request->nparam != 6)
+	{
+		/* set optional error message */
+		SET_MSG_RESULT(result, strdup("Invalid number of parameters e.g.) cloud.instane.hwp.name[url, key, secret, driver, provider, instance_id]"));
+		return SYSINFO_RET_FAIL;
+	}
+	url = get_rparam(request, 0);
+	key = get_rparam(request, 1);
+	secret = get_rparam(request, 2);
+	driver = get_rparam(request, 3);
+	provider = get_rparam(request, 4);
+	instance_id = get_rparam(request, 5);
+
+	service = zbx_deltacloud_get_service(url, key, secret, driver, provider);
+
+	if (service == NULL)
+	{
+		SET_MSG_RESULT(result, strdup("No Data"));
+		return SYSINFO_RET_FAIL;
+	}
+	
+	for (i = 0; service->instances.values_num; i++)
+	{
+		zbx_deltacloud_instance_t *instance = service->instances.values[i];
+		if (0 == strcmp(instance->id, instance_id))
+		{
+			SET_STR_RESULT(result, strdup(instance->hwp->name));
+			return SYSINFO_RET_OK;
+		}
+	}
+	SET_MSG_RESULT(result, strdup("Not match data"));
+	return SYSINFO_RET_FAIL;
+}
 /******************************************************************************
  *                                                                            *
  * Function: zbx_module_init                                                  *
@@ -457,8 +901,8 @@ int	zbx_module_init()
 	srand(time(NULL));
 
 	key_t shm_key;
-	shm_key = zbx_ftok("/usr/local/zabbix/2.1.7/etc/zabbix_agentd.conf", ZBX_IPC_CLOUD_ID);
-	zbx_mem_create(&cloud_mem, shm_key, ZBX_NO_MUTEX, 1048574, "cloud cache size", "CloudCacheSize", 0);
+	shm_key = zbx_ftok(CONFIG_FILE, ZBX_IPC_CLOUD_ID);
+	zbx_mem_create(&cloud_mem, shm_key, ZBX_NO_MUTEX, MEM_SIZE, "cloud cache size", "CloudCacheSize", 0);
 
 	zabbix_log(LOG_LEVEL_ERR, "-------shm_key : %d---\n", shm_key);
 	zabbix_log(LOG_LEVEL_ERR, "-------total_size: %d---\n", cloud_mem->total_size);
