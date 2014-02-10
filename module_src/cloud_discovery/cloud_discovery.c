@@ -64,7 +64,26 @@ typedef struct
 }
 zbx_deltacloud_service_t;
 
-typedef struct deltacloud_instance zbx_deltacloud_instance_t;
+typedef struct
+{
+	char *href;
+	char *id;
+	char *name;
+	char *owner_id;
+	char *image_id;
+	char *image_href;
+	char *realm_id;
+	char *realm_href;
+	char *state;
+	char *launch_time;
+	struct deltacloud_hardware_profile hwp;
+	zbx_vector_ptr_t public_addresses;
+	zbx_vector_ptr_t private_addresses;
+}
+zbx_deltacloud_instance_t;
+
+//typedef struct deltacloud_instance zbx_deltacloud_instance_t;
+typedef struct deltacloud_address zbx_deltacloud_address_t;
 
 static zbx_deltacloud_t	*deltacloud = NULL; 
 static void     cloud_service_shared_free(zbx_deltacloud_service_t *service);
@@ -205,7 +224,7 @@ zbx_deltacloud_service_t	*zbx_deltacloud_get_service(const char* url, const char
  ******************************************************************************/
 int	zbx_module_cloud_instance_list(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
-	int i;
+	int i,j;
 	struct zbx_json json;
 	char	*url;
 	char	*key;
@@ -214,7 +233,8 @@ int	zbx_module_cloud_instance_list(AGENT_REQUEST *request, AGENT_RESULT *result)
 	char	*provider;
 	char 	*name_macro = "{#INSTANCE.NAME}";
 	char 	*id_macro = "{#INSTANCE.ID}";
-//	char 	*interface_macro = "{#INSTANCE.IP}";
+	char 	*public_addr_macro = "{#INSTANCE.PUBLIC_ADDR}";
+	char 	*private_addr_macro = "{#INSTANCE.PRIVATE_ADDR}";
 	zbx_deltacloud_service_t	*service = NULL;
 
 	if (request->nparam != 5)
@@ -254,10 +274,20 @@ int	zbx_module_cloud_instance_list(AGENT_REQUEST *request, AGENT_RESULT *result)
 			zbx_json_addstring(&json, name_macro, instance->name, ZBX_JSON_TYPE_STRING);
 		if (NULL != instance->id)
 			zbx_json_addstring(&json, id_macro, instance->id, ZBX_JSON_TYPE_STRING);
-/*		if(instance->public_addresses){
-			zbx_json_addstring(&json, interface_macro, instance->public_addresses->address, ZBX_JSON_TYPE_STRING);
+		for (j = 0; instance->public_addresses.values_num; j++)
+		{
+			zbx_deltacloud_address_t *address = instance->public_addresses.values[j];
+			zbx_json_addstring(&json, public_addr_macro, address->address, ZBX_JSON_TYPE_STRING);
+			break; /* ToDo: multi address support */
 		}
-*/		zbx_json_close(&json);
+		
+		for (j = 0; instance->private_addresses.values_num; j++)
+		{
+			zbx_deltacloud_address_t *address = instance->private_addresses.values[j];
+			zbx_json_addstring(&json, private_addr_macro, address->address, ZBX_JSON_TYPE_STRING);
+			break; /* ToDo: multi address support */
+		}
+		zbx_json_close(&json);
 	}
 
 	SET_STR_RESULT(result, strdup(json.buffer));
@@ -276,6 +306,8 @@ int	zbx_module_cloud_monitor(AGENT_REQUEST *request, AGENT_RESULT *result)
 	char	*provider;
 	zbx_deltacloud_service_t	*service = NULL;
 	zbx_deltacloud_instance_t	*deltacloud_instance = NULL;
+	zbx_deltacloud_address_t	*public_address = NULL;
+	zbx_deltacloud_address_t	*private_address = NULL;
 	struct deltacloud_api api;
 	struct deltacloud_instance *instance = NULL;
 
@@ -315,6 +347,21 @@ int	zbx_module_cloud_monitor(AGENT_REQUEST *request, AGENT_RESULT *result)
 		deltacloud_instance->realm_href = cloud_shared_strdup(instance->realm_href);
 		deltacloud_instance->state = cloud_shared_strdup(instance->state);
 		deltacloud_instance->launch_time = cloud_shared_strdup(instance->launch_time);
+
+		/* Add IP address information */
+		CLOUD_VECTOR_CREATE(&deltacloud_instance->public_addresses, ptr);
+		CLOUD_VECTOR_CREATE(&deltacloud_instance->private_addresses, ptr);
+		public_address = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_address_t));
+		private_address = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_address_t));
+
+		if(instance->public_addresses)
+			public_address->address = cloud_shared_strdup(instance->public_addresses->address);
+		if(instance->private_addresses)
+			private_address->address = cloud_shared_strdup(instance->private_addresses->address);
+
+		
+		zbx_vector_ptr_append(&deltacloud_instance->public_addresses, public_address);
+		zbx_vector_ptr_append(&deltacloud_instance->private_addresses, private_address);
 		zbx_vector_ptr_append(&service->instances, deltacloud_instance);
 		zabbix_log(LOG_LEVEL_ERR, "-------used_size: %d---\n", cloud_mem->used_size);
 		instance = instance->next;
@@ -409,6 +456,14 @@ int	zbx_module_init()
 	return ZBX_MODULE_OK;
 }
 
+static void	cloud_address_shared_free(zbx_deltacloud_address_t *address)
+{
+	if (NULL != address->address)
+		__cloud_mem_free_func(address->address);
+	__cloud_mem_free_func(address);
+	zabbix_log(LOG_LEVEL_ERR, "--free instance-----used_size: %d---\n", cloud_mem->used_size);
+}
+
 static void	cloud_instance_shared_free(zbx_deltacloud_instance_t *instance)
 {
 	if (NULL != instance->href)
@@ -432,6 +487,10 @@ static void	cloud_instance_shared_free(zbx_deltacloud_instance_t *instance)
 	if (NULL != instance->launch_time)
 		__cloud_mem_free_func(instance->launch_time);
 	__cloud_mem_free_func(instance);
+	zbx_vector_ptr_clean(&instance->public_addresses, (zbx_mem_free_func_t)cloud_address_shared_free);
+	zbx_vector_ptr_clean(&instance->private_addresses, (zbx_mem_free_func_t)cloud_address_shared_free);
+	zbx_vector_ptr_destroy(&instance->public_addresses);
+	zbx_vector_ptr_destroy(&instance->private_addresses);
 	zabbix_log(LOG_LEVEL_ERR, "--free instance-----used_size: %d---\n", cloud_mem->used_size);
 }
 
