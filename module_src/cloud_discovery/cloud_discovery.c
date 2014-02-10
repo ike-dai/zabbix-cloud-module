@@ -40,10 +40,9 @@ int	zbx_module_cloud_instance_status(AGENT_REQUEST *request, AGENT_RESULT *resul
 static zbx_mem_info_t   *cloud_mem = NULL;
 
 ZBX_MEM_FUNC_IMPL(__cloud, cloud_mem);
-//struct deltacloud_driver *drivers = NULL;
-//struct deltacloud_driver_provider *providers = NULL;
 
 //////
+
 
 typedef struct
 {
@@ -64,6 +63,9 @@ typedef struct
 }
 zbx_deltacloud_service_t;
 
+
+typedef struct deltacloud_hardware_profile zbx_deltacloud_hardware_profile_t;
+
 typedef struct
 {
 	char *href;
@@ -76,13 +78,12 @@ typedef struct
 	char *realm_href;
 	char *state;
 	char *launch_time;
-	struct deltacloud_hardware_profile hwp;
+	zbx_deltacloud_hardware_profile_t *hwp;
 	zbx_vector_ptr_t public_addresses;
 	zbx_vector_ptr_t private_addresses;
 }
 zbx_deltacloud_instance_t;
 
-//typedef struct deltacloud_instance zbx_deltacloud_instance_t;
 typedef struct deltacloud_address zbx_deltacloud_address_t;
 
 static zbx_deltacloud_t	*deltacloud = NULL; 
@@ -160,6 +161,20 @@ static char	*cloud_shared_strdup(const char *source)
 
 	return ptr;
 }
+
+//static zbx_deltacloud_hardware_profile_t *cloud_hardware_profile_shared_dup(const deltacloud_hardware_profile *src)
+//static zbx_deltacloud_hardware_profile_t *cloud_hardware_profile_shared_dup(const deltacloud_hardware_profile *src)
+static zbx_deltacloud_hardware_profile_t *cloud_hardware_profile_shared_dup(const struct deltacloud_hardware_profile *src)
+{
+	zbx_deltacloud_hardware_profile_t	*hardware_profile;
+	hardware_profile = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_hardware_profile_t));
+	
+	hardware_profile->href = cloud_shared_strdup(src->href);
+	hardware_profile->id = cloud_shared_strdup(src->id);
+	hardware_profile->name = cloud_shared_strdup(src->name);
+	return hardware_profile;
+}
+	
 
 zbx_deltacloud_service_t	*zbx_deltacloud_get_service(const char* url, const char* key, const char* secret, const char* driver, const char* provider)
 {
@@ -362,6 +377,8 @@ int	zbx_module_cloud_monitor(AGENT_REQUEST *request, AGENT_RESULT *result)
 		
 		zbx_vector_ptr_append(&deltacloud_instance->public_addresses, public_address);
 		zbx_vector_ptr_append(&deltacloud_instance->private_addresses, private_address);
+
+		deltacloud_instance->hwp = cloud_hardware_profile_shared_dup(&instance->hwp);
 		zbx_vector_ptr_append(&service->instances, deltacloud_instance);
 		zabbix_log(LOG_LEVEL_ERR, "-------used_size: %d---\n", cloud_mem->used_size);
 		instance = instance->next;
@@ -464,6 +481,18 @@ static void	cloud_address_shared_free(zbx_deltacloud_address_t *address)
 	zabbix_log(LOG_LEVEL_ERR, "--free instance-----used_size: %d---\n", cloud_mem->used_size);
 }
 
+static void	cloud_hardware_profile_shared_free(zbx_deltacloud_hardware_profile_t *hwp)
+{
+	if (NULL != hwp->href)
+		__cloud_mem_free_func(hwp->href);
+	if (NULL != hwp->id)
+		__cloud_mem_free_func(hwp->id);
+	if (NULL != hwp->name)
+		__cloud_mem_free_func(hwp->name);
+	__cloud_mem_free_func(hwp);
+}
+
+
 static void	cloud_instance_shared_free(zbx_deltacloud_instance_t *instance)
 {
 	if (NULL != instance->href)
@@ -491,6 +520,7 @@ static void	cloud_instance_shared_free(zbx_deltacloud_instance_t *instance)
 	zbx_vector_ptr_clean(&instance->private_addresses, (zbx_mem_free_func_t)cloud_address_shared_free);
 	zbx_vector_ptr_destroy(&instance->public_addresses);
 	zbx_vector_ptr_destroy(&instance->private_addresses);
+	cloud_hardware_profile_shared_free(instance->hwp);
 	zabbix_log(LOG_LEVEL_ERR, "--free instance-----used_size: %d---\n", cloud_mem->used_size);
 }
 
