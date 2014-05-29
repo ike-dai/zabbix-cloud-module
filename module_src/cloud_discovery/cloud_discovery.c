@@ -337,11 +337,12 @@ int	zbx_module_cloud_instance_discovery(AGENT_REQUEST *request, AGENT_RESULT *re
 	// Add "data":[] for LLD format
 	zbx_json_addarray(&json, ZBX_PROTO_TAG_DATA);
 	service = zbx_deltacloud_get_service(url, key, secret, driver, provider);
-	zbx_vector_ptr_clean(&service->instances, (zbx_mem_free_func_t)cloud_instance_shared_free);
 	
 	deltacloud_initialize(&api, url, key, secret, driver, provider);
 
 	deltacloud_get_instances(&api, &instance);
+
+	zbx_vector_ptr_clean(&service->instances, (zbx_mem_free_func_t)cloud_instance_shared_free);
 
 	if(instance==NULL){
 		zbx_json_close(&json);
