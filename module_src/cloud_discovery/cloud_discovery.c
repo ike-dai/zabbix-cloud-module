@@ -465,6 +465,8 @@ int	zbx_module_cloud_instance_info(AGENT_REQUEST *request, AGENT_RESULT *result)
 	for (i = 0; service->instances.values_num; i++)
 	{
 		zbx_deltacloud_instance_t *instance = service->instances.values[i];
+		if (NULL == instance)
+			break;
 		if (0 == strcmp(instance->id, instance_id))
 		{
 			if (0 == strcmp(element, "state"))
