@@ -231,7 +231,7 @@ static zbx_deltacloud_service_t	*zbx_deltacloud_get_service(const char* url, con
 	for (i = 0; i < deltacloud->services.values_num; i++)
 	{
 		service = deltacloud->services.values[i];
-		if (0 == strcmp(service->url, url) && 0 == strcmp(service->key, key) && 0 == strcmp(service->secret, secret) && 0 == strcmp(service->driver, driver) && 0 == strcmp(service->provider, provider))
+		if (NULL != service && 0 == strcmp(service->url, url) && 0 == strcmp(service->key, key) && 0 == strcmp(service->secret, secret) && 0 == strcmp(service->driver, driver) && 0 == strcmp(service->provider, provider))
 		{
 			return service;
 		}
@@ -396,7 +396,10 @@ int	zbx_module_cloud_instance_discovery(AGENT_REQUEST *request, AGENT_RESULT *re
 		for (i = 0; deltacloud_instance->public_addresses.values_num; i++)
 		{
 			zbx_deltacloud_address_t *address = deltacloud_instance->public_addresses.values[i];
-			zbx_json_addstring(&json, PUBLIC_ADDR_MACRO, address->address, ZBX_JSON_TYPE_STRING);
+			if(NULL != address)
+			{
+				zbx_json_addstring(&json, PUBLIC_ADDR_MACRO, address->address, ZBX_JSON_TYPE_STRING);
+			}
 			break; /* ToDo: multi address support */
 		}
 		
@@ -533,11 +536,11 @@ int	zbx_module_cloud_metric_discovery(AGENT_REQUEST *request, AGENT_RESULT *resu
 	for (i = 0; service->instances.values_num; i++)
 	{
 		instance = service->instances.values[i];
-		if (0 == strcmp(instance->id, instance_id))
-		{
-		       // instance = service->instances.values[i];
+		if (NULL == instance)
 			break;
-		}
+		if (0 == strcmp(instance->id, instance_id))
+			break;
+		instance = NULL;
 	}
         if (instance == NULL)
         {
@@ -613,14 +616,35 @@ int	zbx_module_cloud_metric(AGENT_REQUEST *request, AGENT_RESULT *result)
 	for (i = 0; service->instances.values_num; i++)
 	{
 		zbx_deltacloud_instance_t *instance = service->instances.values[i];
+		if (instance == NULL)
+		{
+			SET_MSG_RESULT(result, strdup("No instance"));
+			return SYSINFO_RET_FAIL;
+		}
 		if (0 == strcmp(instance->id, instance_id))
 		{
 			for (j = 0; instance->metrics.values_num; j++)
 			{
 				zbx_deltacloud_metric_t *metric = instance->metrics.values[j];
-				if (0 == strcmp(metric->name, metric_name))
+				if (metric == NULL)
 				{
+					SET_MSG_RESULT(result, strdup("No metric"));
+					return SYSINFO_RET_FAIL;
+				}
+				if (NULL != metric->name && 0 == strcmp(metric->name, metric_name))
+				{
+					if (0 == metric->values.values_num)
+					{
+						SET_MSG_RESULT(result, strdup("No metric value data"));
+						return SYSINFO_RET_FAIL;
+					}
+
 					zbx_deltacloud_metric_value_t *metric_value = metric->values.values[0];
+					if (NULL == metric_value)
+					{	
+						SET_MSG_RESULT(result, strdup("No metric value data"));
+						return SYSINFO_RET_FAIL;
+					}
 					if (0 == strcmp(mode, "minimum"))
 					{
 						SET_STR_RESULT(result, strdup(metric_value->minimum));
@@ -640,6 +664,7 @@ int	zbx_module_cloud_metric(AGENT_REQUEST *request, AGENT_RESULT *result)
 					}
 					return SYSINFO_RET_OK;
 				}			
+				metric = NULL;
 			}
 			return SYSINFO_RET_OK;
 		}
@@ -721,9 +746,6 @@ static void	cloud_metric_value_shared_free(zbx_deltacloud_metric_value_t *value)
 static void	cloud_metric_shared_free(zbx_deltacloud_metric_t *metric)
 {
 
-	if (NULL != metric->name )
-		zabbix_log(LOG_LEVEL_ERR, "-------shared free metric: metric->name: %s---\n",metric->name);
-	
 	zbx_vector_ptr_clean(&metric->values, (zbx_mem_free_func_t)cloud_metric_value_shared_free);
 	zbx_vector_ptr_destroy(&metric->values);
 	if (NULL != metric->href)
