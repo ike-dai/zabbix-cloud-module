@@ -27,7 +27,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <libdeltacloud/libdeltacloud.h>
-//#include "memwatch.h"
 
 #define ZBX_IPC_CLOUD_ID 'c'
 #define NAME_MACRO "{#INSTANCE.NAME}"
@@ -74,31 +73,32 @@ typedef struct
 }
 zbx_deltacloud_service_t;
 
-typedef struct deltacloud_metric_value zbx_deltacloud_metric_value_t;
-/* Ref. struct deltacloud_metric_value
- *   char *unit
- *   char *minimum
- *   char *maximum
- *   char *samples
- *   char *average
- *   struct deltacloud_metric_value *next
- */
+typedef struct
+{
+	char *unit;
+	char *minimum;
+	char *maximum;
+	char *samples;
+	char *average;
+}
+zbx_deltacloud_metric_value_t;
 
 typedef struct
 {
 	char *href;
 	char *name;
-	zbx_vector_ptr_t values;
+	zbx_deltacloud_metric_value_t *metric_value;
 }
 zbx_deltacloud_metric_t;
 	
-typedef struct deltacloud_hardware_profile zbx_deltacloud_hardware_profile_t;
-/* Ref. struct deltacloud_hardware_profile
- *   char *href;
- *   char *id;
- *   char *name;
- *   struct deltacloud_property *properties;
- */
+typedef struct
+{
+	char *href;
+	char *id;
+	char *name;
+	struct deltacloud_property *properties;
+}
+zbx_deltacloud_hardware_profile_t;
 
 typedef struct
 {
@@ -119,11 +119,11 @@ typedef struct
 }
 zbx_deltacloud_instance_t;
 
-typedef struct deltacloud_address zbx_deltacloud_address_t;
-/* Ref. struct deltacloud_address
- *   char *address;
- *   struct deltacloud_address *next;
- */
+typedef struct 
+{
+	char *address;
+}
+zbx_deltacloud_address_t;
 
 static void     cloud_service_shared_free(zbx_deltacloud_service_t *service);
 static void	cloud_instance_shared_free(zbx_deltacloud_instance_t *instance);
@@ -276,20 +276,34 @@ static void metric_monitor(char *url, char *key, char *secret, char *driver, cha
 	
 	while(1){
 		deltacloud_metric = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_metric_t));
-		zabbix_log(LOG_LEVEL_ERR, "-------used_size: %d---\n", cloud_mem->used_size);
+		if (NULL == metric->name)
+		{
+			zbx_vector_ptr_append(&instance->metrics, deltacloud_metric);
+			break;
+		}
                 deltacloud_metric->name = cloud_shared_strdup(metric->name);
                 deltacloud_metric->href = cloud_shared_strdup(metric->href);
+		deltacloud_metric->metric_value = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_metric_value_t));	
 
 		if(metric->values)
 		{
-			CLOUD_VECTOR_CREATE(&deltacloud_metric->values, ptr);
-			metric_value = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_metric_value_t));	
-			metric_value->unit = cloud_shared_strdup(metric->values->unit);
-			metric_value->minimum = cloud_shared_strdup(metric->values->minimum);
-			metric_value->maximum = cloud_shared_strdup(metric->values->maximum);
-			metric_value->samples = cloud_shared_strdup(metric->values->samples);
-			metric_value->average = cloud_shared_strdup(metric->values->average);
-			zbx_vector_ptr_append(&deltacloud_metric->values, metric_value);
+			if(NULL != metric->values->unit)
+				deltacloud_metric->metric_value->unit = cloud_shared_strdup(metric->values->unit);
+			if(NULL != metric->values->minimum)
+				deltacloud_metric->metric_value->minimum = cloud_shared_strdup(metric->values->minimum);
+			if(NULL != metric->values->maximum)
+				deltacloud_metric->metric_value->maximum = cloud_shared_strdup(metric->values->maximum);
+			if(NULL != metric->values->samples)
+				deltacloud_metric->metric_value->samples = cloud_shared_strdup(metric->values->samples);
+			if(NULL != metric->values->average)
+				deltacloud_metric->metric_value->average = cloud_shared_strdup(metric->values->average);
+		}else{
+
+			deltacloud_metric->metric_value->unit = NULL;
+			deltacloud_metric->metric_value->minimum = NULL;
+			deltacloud_metric->metric_value->maximum = NULL;
+			deltacloud_metric->metric_value->samples = NULL;
+			deltacloud_metric->metric_value->average = NULL;
 		}
 		
 		zbx_vector_ptr_append(&instance->metrics, deltacloud_metric);
@@ -343,7 +357,6 @@ int	zbx_module_cloud_instance_discovery(AGENT_REQUEST *request, AGENT_RESULT *re
 	deltacloud_get_instances(&api, &instance);
 
 	zbx_vector_ptr_clean(&service->instances, (zbx_mem_free_func_t)cloud_instance_shared_free);
-
 	if(instance==NULL){
 		zbx_json_close(&json);
 		//SET_UI64_RESULT(result, 0);
@@ -355,7 +368,7 @@ int	zbx_module_cloud_instance_discovery(AGENT_REQUEST *request, AGENT_RESULT *re
 	
 	while(1){
 		deltacloud_instance = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_instance_t));
-		zabbix_log(LOG_LEVEL_ERR, "-------used_size: %d---\n", cloud_mem->used_size);
+		zabbix_log(LOG_LEVEL_ERR, "-------cloud_mem used_size: %d---\n", cloud_mem->used_size);
 		deltacloud_instance->href = cloud_shared_strdup(instance->href);
 		deltacloud_instance->id = cloud_shared_strdup(instance->id);
 		deltacloud_instance->name = cloud_shared_strdup(instance->name);
@@ -422,7 +435,6 @@ int	zbx_module_cloud_instance_discovery(AGENT_REQUEST *request, AGENT_RESULT *re
 	zbx_json_free(&json);
 
   	deltacloud_free_instance_list(&start_ptr);
-	zabbix_log(LOG_LEVEL_ERR, "---free deltacloud metric list \n");
 	
 	return SYSINFO_RET_OK;
 }
@@ -551,6 +563,7 @@ int	zbx_module_cloud_metric_discovery(AGENT_REQUEST *request, AGENT_RESULT *resu
 		return SYSINFO_RET_FAIL;
         } 
 
+
 	zbx_vector_ptr_clean(&instance->metrics, (zbx_mem_free_func_t)cloud_metric_shared_free);
 	metric_monitor(url, key, secret, driver, provider, instance);
 	// json format init
@@ -636,30 +649,24 @@ int	zbx_module_cloud_metric(AGENT_REQUEST *request, AGENT_RESULT *result)
 				}
 				if (NULL != metric->name && 0 == strcmp(metric->name, metric_name))
 				{
-					if (0 == metric->values.values_num)
+					if (NULL == metric->metric_value)
 					{
 						SET_MSG_RESULT(result, strdup("No metric value data"));
 						return SYSINFO_RET_FAIL;
 					}
 
-					zbx_deltacloud_metric_value_t *metric_value = metric->values.values[0];
-					if (NULL == metric_value)
-					{	
-						SET_MSG_RESULT(result, strdup("No metric value data"));
-						return SYSINFO_RET_FAIL;
-					}
-					if (0 == strcmp(mode, "minimum"))
+					if (NULL != metric->metric_value->minimum && 0 == strcmp(mode, "minimum"))
 					{
-						SET_STR_RESULT(result, strdup(metric_value->minimum));
-					}else if (0 == strcmp(mode, "maximum"))
+						SET_STR_RESULT(result, strdup(metric->metric_value->minimum));
+					}else if (NULL != metric->metric_value->maximum && 0 == strcmp(mode, "maximum"))
 					{
-						SET_STR_RESULT(result, strdup(metric_value->maximum));
-					}else if (0 == strcmp(mode, "samples"))
+						SET_STR_RESULT(result, strdup(metric->metric_value->maximum));
+					}else if (NULL != metric->metric_value->samples && 0 == strcmp(mode, "samples"))
 					{
-						SET_STR_RESULT(result, strdup(metric_value->samples));
-					}else if (0 == strcmp(mode, "average"))
+						SET_STR_RESULT(result, strdup(metric->metric_value->samples));
+					}else if (NULL != metric->metric_value->samples && 0 == strcmp(mode, "average"))
 					{
-						SET_STR_RESULT(result, strdup(metric_value->average));
+						SET_STR_RESULT(result, strdup(metric->metric_value->average));
 					}else
 					{
 						SET_MSG_RESULT(result, strdup("Not match date mode"));
@@ -732,8 +739,6 @@ static void	cloud_metric_value_shared_free(zbx_deltacloud_metric_value_t *value)
 {
 	if (NULL != value)
 	{
-		if (NULL != value->unit)
-			__cloud_mem_free_func(value->unit);
 		if (NULL != value->minimum)
 			__cloud_mem_free_func(value->minimum);
 		if (NULL != value->maximum)
@@ -742,15 +747,16 @@ static void	cloud_metric_value_shared_free(zbx_deltacloud_metric_value_t *value)
 			__cloud_mem_free_func(value->samples);
 		if (NULL != value->average)
 			__cloud_mem_free_func(value->average);
+		if (NULL != value->unit)
+			__cloud_mem_free_func(value->unit);
+		__cloud_mem_free_func(value);
 	}
-	__cloud_mem_free_func(value);
 }
 
 static void	cloud_metric_shared_free(zbx_deltacloud_metric_t *metric)
 {
-
-	zbx_vector_ptr_clean(&metric->values, (zbx_mem_free_func_t)cloud_metric_value_shared_free);
-	zbx_vector_ptr_destroy(&metric->values);
+	if (NULL != metric->metric_value)
+		cloud_metric_value_shared_free(metric->metric_value);
 	if (NULL != metric->href)
 		__cloud_mem_free_func(metric->href);
 	if (NULL != metric->name)
