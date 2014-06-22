@@ -70,6 +70,7 @@ typedef struct
         int	lastcheck;
         int	lastaccess;
         zbx_vector_ptr_t  instances;
+        zbx_vector_ptr_t  metric_infos;
 }
 zbx_deltacloud_service_t;
 
@@ -115,9 +116,15 @@ typedef struct
 	zbx_deltacloud_hardware_profile_t *hwp;
 	zbx_vector_ptr_t public_addresses;
 	zbx_vector_ptr_t private_addresses;
-        zbx_vector_ptr_t metrics;
 }
 zbx_deltacloud_instance_t;
+
+typedef struct
+{
+	char *instance_id;
+	zbx_vector_ptr_t metrics;
+}
+zbx_deltacloud_metric_info_t;
 
 typedef struct 
 {
@@ -224,7 +231,7 @@ static zbx_deltacloud_service_t	*zbx_deltacloud_get_service(const char* url, con
 
 	if (NULL == deltacloud)
 	{
-		zabbix_log(LOG_LEVEL_ERR, "---Not initialized shared memory---");
+		zabbix_log(LOG_LEVEL_ERR, "Not initialized shared memory");
 		return NULL;
 	}
 
@@ -249,72 +256,12 @@ static zbx_deltacloud_service_t	*zbx_deltacloud_get_service(const char* url, con
 	service->lastaccess = time(NULL);
 	service->lastcheck = time(NULL);
 	CLOUD_VECTOR_CREATE(&service->instances, ptr);
+	CLOUD_VECTOR_CREATE(&service->metric_infos, ptr);
 
 	zbx_vector_ptr_append(&deltacloud->services, service);
 	return service;
 }
 
-static void metric_monitor(char *url, char *key, char *secret, char *driver, char *provider, zbx_deltacloud_instance_t *instance)
-{
-	zbx_deltacloud_metric_t	*deltacloud_metric = NULL;
-	zbx_deltacloud_metric_value_t	*metric_value = NULL;
-
-	struct deltacloud_api api;
-        struct deltacloud_metric *metric = NULL;
-        struct deltacloud_metric *start_ptr = NULL;
-
-	int result;
-
-	result = deltacloud_initialize(&api, url, key, secret, driver, provider);
-
-	deltacloud_get_metrics_by_instance_id(&api, instance->id,  &metric);
-
-	if (result == -1 || metric == NULL)
-		return;
-	
-	start_ptr = metric;
-	
-	while(1){
-		deltacloud_metric = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_metric_t));
-		if (NULL == metric->name)
-		{
-			zbx_vector_ptr_append(&instance->metrics, deltacloud_metric);
-			break;
-		}
-                deltacloud_metric->name = cloud_shared_strdup(metric->name);
-                deltacloud_metric->href = cloud_shared_strdup(metric->href);
-		deltacloud_metric->metric_value = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_metric_value_t));	
-
-		if(metric->values)
-		{
-			if(NULL != metric->values->unit)
-				deltacloud_metric->metric_value->unit = cloud_shared_strdup(metric->values->unit);
-			if(NULL != metric->values->minimum)
-				deltacloud_metric->metric_value->minimum = cloud_shared_strdup(metric->values->minimum);
-			if(NULL != metric->values->maximum)
-				deltacloud_metric->metric_value->maximum = cloud_shared_strdup(metric->values->maximum);
-			if(NULL != metric->values->samples)
-				deltacloud_metric->metric_value->samples = cloud_shared_strdup(metric->values->samples);
-			if(NULL != metric->values->average)
-				deltacloud_metric->metric_value->average = cloud_shared_strdup(metric->values->average);
-		}else{
-
-			deltacloud_metric->metric_value->unit = NULL;
-			deltacloud_metric->metric_value->minimum = NULL;
-			deltacloud_metric->metric_value->maximum = NULL;
-			deltacloud_metric->metric_value->samples = NULL;
-			deltacloud_metric->metric_value->average = NULL;
-		}
-		
-		zbx_vector_ptr_append(&instance->metrics, deltacloud_metric);
-                metric = metric->next;
-                if(metric == NULL)
-                	break;
-        }
-	if(NULL != start_ptr)
-  		deltacloud_free_metric_list(&start_ptr);
-}
-	
 int	zbx_module_cloud_instance_discovery(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
 	zbx_module_item_timeout(0);
@@ -329,7 +276,7 @@ int	zbx_module_cloud_instance_discovery(AGENT_REQUEST *request, AGENT_RESULT *re
 	zbx_deltacloud_instance_t	*deltacloud_instance = NULL;
 	zbx_deltacloud_address_t	*public_address = NULL;
 	zbx_deltacloud_address_t	*private_address = NULL;
-	zbx_deltacloud_metric_t		*metric = NULL;
+//	zbx_deltacloud_metric_t		*metric = NULL;
 	struct deltacloud_api api;
 	struct deltacloud_instance *instance = NULL;
 	struct deltacloud_instance *start_ptr = NULL;
@@ -368,17 +315,26 @@ int	zbx_module_cloud_instance_discovery(AGENT_REQUEST *request, AGENT_RESULT *re
 	
 	while(1){
 		deltacloud_instance = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_instance_t));
-		zabbix_log(LOG_LEVEL_ERR, "-------cloud_mem used_size: %d---\n", cloud_mem->used_size);
-		deltacloud_instance->href = cloud_shared_strdup(instance->href);
-		deltacloud_instance->id = cloud_shared_strdup(instance->id);
-		deltacloud_instance->name = cloud_shared_strdup(instance->name);
-		deltacloud_instance->owner_id = cloud_shared_strdup(instance->owner_id);
-		deltacloud_instance->image_id = cloud_shared_strdup(instance->image_id);
-		deltacloud_instance->image_href = cloud_shared_strdup(instance->image_href);
-		deltacloud_instance->realm_id = cloud_shared_strdup(instance->realm_id);
-		deltacloud_instance->realm_href = cloud_shared_strdup(instance->realm_href);
-		deltacloud_instance->state = cloud_shared_strdup(instance->state);
-		deltacloud_instance->launch_time = cloud_shared_strdup(instance->launch_time);
+		if(NULL != instance->href)
+			deltacloud_instance->href = cloud_shared_strdup(instance->href);
+		if(NULL != instance->id)
+			deltacloud_instance->id = cloud_shared_strdup(instance->id);
+		if(NULL != instance->name)
+			deltacloud_instance->name = cloud_shared_strdup(instance->name);
+		if(NULL != instance->owner_id)
+			deltacloud_instance->owner_id = cloud_shared_strdup(instance->owner_id);
+		if(NULL != instance->image_id)
+			deltacloud_instance->image_id = cloud_shared_strdup(instance->image_id);
+		if(NULL != instance->image_href)
+			deltacloud_instance->image_href = cloud_shared_strdup(instance->image_href);
+		if(NULL != instance->realm_id)
+			deltacloud_instance->realm_id = cloud_shared_strdup(instance->realm_id);
+		if(NULL != instance->realm_href)
+			deltacloud_instance->realm_href = cloud_shared_strdup(instance->realm_href);
+		if(NULL != instance->state)
+			deltacloud_instance->state = cloud_shared_strdup(instance->state);
+		if(NULL != instance->launch_time)
+			deltacloud_instance->launch_time = cloud_shared_strdup(instance->launch_time);
 
 		/* Add IP address information */
 		CLOUD_VECTOR_CREATE(&deltacloud_instance->public_addresses, ptr);
@@ -396,8 +352,6 @@ int	zbx_module_cloud_instance_discovery(AGENT_REQUEST *request, AGENT_RESULT *re
 		zbx_vector_ptr_append(&deltacloud_instance->private_addresses, private_address);
 
 		deltacloud_instance->hwp = cloud_hardware_profile_shared_dup(&instance->hwp);
-		CLOUD_VECTOR_CREATE(&deltacloud_instance->metrics, ptr);
-		metric_monitor(url, key, secret, driver, provider, deltacloud_instance);
 		zbx_vector_ptr_append(&service->instances, deltacloud_instance);
 
 		/* Set json data for LLD response */
@@ -407,7 +361,7 @@ int	zbx_module_cloud_instance_discovery(AGENT_REQUEST *request, AGENT_RESULT *re
 			zbx_json_addstring(&json, NAME_MACRO, deltacloud_instance->name, ZBX_JSON_TYPE_STRING);
 		if (NULL != instance->id)
 			zbx_json_addstring(&json, ID_MACRO, deltacloud_instance->id, ZBX_JSON_TYPE_STRING);
-		for (i = 0; deltacloud_instance->public_addresses.values_num; i++)
+		for (i = 0; i < deltacloud_instance->public_addresses.values_num; i++)
 		{
 			zbx_deltacloud_address_t *address = deltacloud_instance->public_addresses.values[i];
 			if(NULL != address)
@@ -417,7 +371,7 @@ int	zbx_module_cloud_instance_discovery(AGENT_REQUEST *request, AGENT_RESULT *re
 			break; /* ToDo: multi address support */
 		}
 		
-		for (i = 0; deltacloud_instance->private_addresses.values_num; i++)
+		for (i = 0; i < deltacloud_instance->private_addresses.values_num; i++)
 		{
 			zbx_deltacloud_address_t *address = deltacloud_instance->private_addresses.values[i];
 			zbx_json_addstring(&json, PRIVATE_ADDR_MACRO, address->address, ZBX_JSON_TYPE_STRING);
@@ -435,6 +389,7 @@ int	zbx_module_cloud_instance_discovery(AGENT_REQUEST *request, AGENT_RESULT *re
 	zbx_json_free(&json);
 
   	deltacloud_free_instance_list(&start_ptr);
+	zabbix_log(LOG_LEVEL_ERR, "Finish cloud.instance.discovery: [cloud_mem used_size: %d]\n", cloud_mem->used_size);
 	
 	return SYSINFO_RET_OK;
 }
@@ -475,7 +430,7 @@ int	zbx_module_cloud_instance_info(AGENT_REQUEST *request, AGENT_RESULT *result)
 		return SYSINFO_RET_FAIL;
 	}
 	
-	for (i = 0; service->instances.values_num; i++)
+	for (i = 0; i < service->instances.values_num; i++)
 	{
 		zbx_deltacloud_instance_t *instance = service->instances.values[i];
 		if (NULL == instance)
@@ -526,6 +481,7 @@ int	zbx_module_cloud_metric_discovery(AGENT_REQUEST *request, AGENT_RESULT *resu
 	char	*instance_id;
 	
 	zbx_deltacloud_service_t	*service = NULL;
+	zbx_deltacloud_metric_info_t	*metric_info = NULL;
 
 	if (request->nparam != 6)
 	{
@@ -546,34 +502,102 @@ int	zbx_module_cloud_metric_discovery(AGENT_REQUEST *request, AGENT_RESULT *resu
 		return SYSINFO_RET_FAIL;
 	}
         
-        zbx_deltacloud_instance_t *instance = NULL;
-	
-	for (i = 0; service->instances.values_num; i++)
+	for (i = 0; i < service->metric_infos.values_num; i++)
 	{
-		instance = service->instances.values[i];
-		if (NULL == instance)
+		metric_info = service->metric_infos.values[i];
+		if (NULL == metric_info)
 			break;
-		if (0 == strcmp(instance->id, instance_id))
+		if (0 == strcmp(metric_info->instance_id, instance_id))
 			break;
-		instance = NULL;
+		metric_info = NULL;
 	}
-        if (instance == NULL)
+        if (metric_info == NULL)
         {
-		SET_MSG_RESULT(result, strdup("No Data"));
-		return SYSINFO_RET_FAIL;
+		/* init metric_info */
+		metric_info = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_metric_info_t));
+		CLOUD_VECTOR_CREATE(&metric_info->metrics, ptr);
+		metric_info->instance_id = cloud_shared_strdup(instance_id);
         } 
 
 
-	zbx_vector_ptr_clean(&instance->metrics, (zbx_mem_free_func_t)cloud_metric_shared_free);
-	metric_monitor(url, key, secret, driver, provider, instance);
+	zbx_vector_ptr_clean(&metric_info->metrics, (zbx_mem_free_func_t)cloud_metric_shared_free);
+/* metric monitoring */
+	zbx_deltacloud_metric_t *deltacloud_metric = NULL;
+	zbx_deltacloud_metric_value_t *metric_value = NULL;
+
+	struct deltacloud_api api;
+	struct deltacloud_metric *metric = NULL;
+	struct deltacloud_metric *start_ptr = NULL;
+
+	int rc;
+
+	rc = deltacloud_initialize(&api, url, key, secret, driver, provider);
+
+	deltacloud_get_metrics_by_instance_id(&api, instance_id, &metric);
+
+	if (rc == -1 || metric == NULL)
+	{
+		SET_MSG_RESULT(result, strdup("No Data"));
+		return SYSINFO_RET_FAIL;
+	}
+	start_ptr = metric;
+
+
+	while(1)
+	{
+		deltacloud_metric = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_metric_t));
+
+		if (NULL != metric->name)
+			deltacloud_metric->name = cloud_shared_strdup(metric->name);
+		else
+			deltacloud_metric->name = NULL;
+		if (NULL != metric->href)
+			deltacloud_metric->href = cloud_shared_strdup(metric->href);
+		else
+			deltacloud_metric->href = NULL;
+		deltacloud_metric->metric_value = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_metric_value_t));
+
+		if (metric->values)
+		{
+			if(NULL != metric->values->unit)
+				deltacloud_metric->metric_value->unit = cloud_shared_strdup(metric->values->unit);
+			if(NULL != metric->values->minimum)
+				deltacloud_metric->metric_value->minimum = cloud_shared_strdup(metric->values->minimum);
+			if(NULL != metric->values->maximum)
+				deltacloud_metric->metric_value->maximum = cloud_shared_strdup(metric->values->maximum);
+			if(NULL != metric->values->samples)
+				deltacloud_metric->metric_value->samples = cloud_shared_strdup(metric->values->samples);
+			if(NULL != metric->values->average)
+				deltacloud_metric->metric_value->average = cloud_shared_strdup(metric->values->average);
+                }else{
+			deltacloud_metric->metric_value->unit = NULL;	
+			deltacloud_metric->metric_value->minimum = NULL;	
+			deltacloud_metric->metric_value->maximum = NULL;	
+			deltacloud_metric->metric_value->samples = NULL;	
+			deltacloud_metric->metric_value->average = NULL;	
+		}
+		zbx_vector_ptr_append(&metric_info->metrics, deltacloud_metric);
+
+		metric = metric->next;
+
+		if (metric == NULL)
+			break;
+	}
+
+	if (NULL != start_ptr)
+		deltacloud_free_metric_list(&start_ptr);
+	zbx_vector_ptr_append(&service->metric_infos, metric_info);
+
+		
 	// json format init
 	zbx_json_init(&json, ZBX_JSON_STAT_BUF_LEN);
 	// Add "data":[] for LLD format
 	zbx_json_addarray(&json, ZBX_PROTO_TAG_DATA);
 
-	for (i = 0; instance->metrics.values_num; i++)
+
+	for (i = 0; i < metric_info->metrics.values_num; i++)
 	{
-		zbx_deltacloud_metric_t *metric = instance->metrics.values[i];
+		zbx_deltacloud_metric_t *metric = metric_info->metrics.values[i];
 		if (NULL == metric)
 		{
 			zbx_json_close(&json);
@@ -583,12 +607,17 @@ int	zbx_module_cloud_metric_discovery(AGENT_REQUEST *request, AGENT_RESULT *resu
 		if (NULL != metric->name)
 		{
 			zbx_json_addstring(&json, METRIC_NAME_MACRO, metric->name, ZBX_JSON_TYPE_STRING);
+			if (NULL != metric->metric_value->unit)
+			{
+				zbx_json_addstring(&json, METRIC_UNIT_MACRO, metric->metric_value->unit, ZBX_JSON_TYPE_STRING);
+			}
 			zbx_json_close(&json);
 		}
 	}
 	SET_STR_RESULT(result, strdup(json.buffer));
 	zbx_json_free(&json);
 	
+	zabbix_log(LOG_LEVEL_ERR, "Finish cloud.metric.discovery: [cloud_mem used_size: %d]\n", cloud_mem->used_size);
 	return SYSINFO_RET_OK;
 }
 
@@ -629,19 +658,19 @@ int	zbx_module_cloud_metric(AGENT_REQUEST *request, AGENT_RESULT *result)
 		return SYSINFO_RET_FAIL;
 	}
 	
-	for (i = 0; service->instances.values_num; i++)
+	for (i = 0; i < service->metric_infos.values_num; i++)
 	{
-		zbx_deltacloud_instance_t *instance = service->instances.values[i];
-		if (instance == NULL)
+		zbx_deltacloud_metric_info_t *metric_info = service->metric_infos.values[i];
+		if (metric_info == NULL)
 		{
-			SET_MSG_RESULT(result, strdup("No instance"));
+			SET_MSG_RESULT(result, strdup("No metric data"));
 			return SYSINFO_RET_FAIL;
 		}
-		if (0 == strcmp(instance->id, instance_id))
+		if (0 == strcmp(metric_info->instance_id, instance_id))
 		{
-			for (j = 0; instance->metrics.values_num; j++)
+			for (j = 0; metric_info->metrics.values_num; j++)
 			{
-				zbx_deltacloud_metric_t *metric = instance->metrics.values[j];
+				zbx_deltacloud_metric_t *metric = metric_info->metrics.values[j];
 				if (metric == NULL)
 				{
 					SET_MSG_RESULT(result, strdup("No metric"));
@@ -704,13 +733,8 @@ int	zbx_module_init()
 	shm_key = zbx_ftok(CONFIG_FILE, ZBX_IPC_CLOUD_ID);
 	zbx_mem_create(&cloud_mem, shm_key, ZBX_NO_MUTEX, MEM_SIZE, "cloud cache size", "CloudCacheSize", 0);
 
-	zabbix_log(LOG_LEVEL_ERR, "-------shm_key : %d---\n", shm_key);
-	zabbix_log(LOG_LEVEL_ERR, "-------total_size: %d---\n", cloud_mem->total_size);
-	zabbix_log(LOG_LEVEL_ERR, "-------used_size: %d---\n", cloud_mem->used_size);
 	deltacloud = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_t));	
-	zabbix_log(LOG_LEVEL_ERR, "-------used_size: %d---\n", cloud_mem->used_size);
 	memset(deltacloud, 0, sizeof(zbx_deltacloud_t));
-	zabbix_log(LOG_LEVEL_ERR, "-------used_size: %d---\n", cloud_mem->used_size);
 
 	CLOUD_VECTOR_CREATE(&deltacloud->services, ptr);
 
@@ -789,12 +813,19 @@ static void	cloud_instance_shared_free(zbx_deltacloud_instance_t *instance)
 	zbx_vector_ptr_clean(&instance->public_addresses, (zbx_mem_free_func_t)cloud_address_shared_free);
 	zbx_vector_ptr_clean(&instance->private_addresses, (zbx_mem_free_func_t)cloud_address_shared_free);
 	
-	zbx_vector_ptr_clean(&instance->metrics, (zbx_mem_free_func_t)cloud_metric_shared_free);
 	zbx_vector_ptr_destroy(&instance->public_addresses);
 	zbx_vector_ptr_destroy(&instance->private_addresses);
-	zbx_vector_ptr_destroy(&instance->metrics);
 	cloud_hardware_profile_shared_free(instance->hwp);
 	__cloud_mem_free_func(instance);
+}
+
+static void	cloud_metric_info_shared_free(zbx_deltacloud_metric_info_t *metric_info)
+{
+	if (NULL != metric_info->instance_id)
+		cloud_metric_value_shared_free(metric_info->instance_id);
+	zbx_vector_ptr_clean(&metric_info->metrics, (zbx_mem_free_func_t)cloud_metric_shared_free);
+	zbx_vector_ptr_destroy(&metric_info->metrics);
+	__cloud_mem_free_func(metric_info);
 }
 
 static void	cloud_service_shared_free(zbx_deltacloud_service_t *service)
@@ -812,6 +843,8 @@ static void	cloud_service_shared_free(zbx_deltacloud_service_t *service)
 
 	zbx_vector_ptr_clean(&service->instances, (zbx_mem_free_func_t)cloud_instance_shared_free);
 	zbx_vector_ptr_destroy(&service->instances);
+	zbx_vector_ptr_clean(&service->metric_infos, (zbx_mem_free_func_t)cloud_metric_info_shared_free);
+	zbx_vector_ptr_destroy(&service->metric_infos);
 	__cloud_mem_free_func(service);
 }
 
@@ -834,8 +867,8 @@ int	zbx_module_uninit()
 		zbx_vector_ptr_destroy(&deltacloud->services);
 		__cloud_mem_free_func(deltacloud);
 	}
+	zabbix_log(LOG_LEVEL_ERR, "Clean cloud mem: [used_size: %d]\n", cloud_mem->used_size);
 	zbx_mem_destroy(cloud_mem);
-	zabbix_log(LOG_LEVEL_ERR, "----destroy cloud_mem---used_size: %d---\n", cloud_mem->used_size);
 
 	return ZBX_MODULE_OK;
 }
