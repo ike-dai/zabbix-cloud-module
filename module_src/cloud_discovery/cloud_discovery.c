@@ -23,10 +23,12 @@
 #include "memalloc.h"
 #include "log.h"
 #include "zbxalgo.h"
+#include "cfg.h"
 #include <curl/curl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <libdeltacloud/libdeltacloud.h>
+#include <string.h>
 
 #define ZBX_IPC_CLOUD_ID 'c'
 #define NAME_MACRO "{#INSTANCE.NAME}"
@@ -35,12 +37,15 @@
 #define PRIVATE_ADDR_MACRO "{#INSTANCE.PRIVATE_ADDR}"
 #define METRIC_NAME_MACRO "{#METRIC.NAME}"
 #define METRIC_UNIT_MACRO "{#METRIC.UNIT}"
-#define CONFIG_FILE "/usr/local/zabbix/2.1.7/etc/zabbix_agentd.conf"
-#define MEM_SIZE 1048576
+#define CONFIG_FILE "/etc/zabbix/deltacloud_module.conf"
 #define EXPIRE_TIME 60*60*24
 
+int CONFIG_MODULE_TIMEOUT	= 300;
+zbx_uint64_t	CONFIG_MODULE_CLOUD_CACHE_SIZE	= 4 * ZBX_MEBIBYTE;
+char *CONFIG_ZABBIX_FILE = NULL;
+
 /* the variable keeps timeout setting for item processing */
-static int	item_timeout = 0;
+static int	item_timeout = 300; 
 
 int	zbx_module_cloud_instance_discovery(AGENT_REQUEST *request, AGENT_RESULT *result);
 int	zbx_module_cloud_instance_info(AGENT_REQUEST *request, AGENT_RESULT *result);
@@ -264,7 +269,7 @@ static zbx_deltacloud_service_t	*zbx_deltacloud_get_service(const char* url, con
 
 int	zbx_module_cloud_instance_discovery(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
-	zbx_module_item_timeout(0);
+	zbx_module_item_timeout(CONFIG_MODULE_TIMEOUT);
 	int i;
 	struct zbx_json json;
 	char	*url;
@@ -276,7 +281,6 @@ int	zbx_module_cloud_instance_discovery(AGENT_REQUEST *request, AGENT_RESULT *re
 	zbx_deltacloud_instance_t	*deltacloud_instance = NULL;
 	zbx_deltacloud_address_t	*public_address = NULL;
 	zbx_deltacloud_address_t	*private_address = NULL;
-//	zbx_deltacloud_metric_t		*metric = NULL;
 	struct deltacloud_api api;
 	struct deltacloud_instance *instance = NULL;
 	struct deltacloud_instance *start_ptr = NULL;
@@ -711,6 +715,46 @@ int	zbx_module_cloud_metric(AGENT_REQUEST *request, AGENT_RESULT *result)
 	SET_MSG_RESULT(result, strdup("Not match data"));
 	return SYSINFO_RET_FAIL;
 }
+
+/******************************************************************************
+ *                                                                            *
+ * Function: zbx_module_set_defaults                                          *
+ *                                                                            *
+ * Purpose:                                                                   *
+ *                                                                            *
+ * Comment:                                                                   *
+ *                                                                            *
+ ******************************************************************************/
+static void	zbx_module_set_defaults()
+{
+
+	if (NULL == CONFIG_ZABBIX_FILE)
+		CONFIG_ZABBIX_FILE = zbx_strdup(CONFIG_ZABBIX_FILE, "/etc/zabbix/zabbix_server.conf");
+}
+/******************************************************************************
+ *                                                                            *
+ * Function: zbx_module_load_config                                           *
+ *                                                                            *
+ * Purpose:                                                                   *
+ *                                                                            *
+ * Return value: ZBX_MODULE_OK - success                                      *
+ *               ZBX_MODULE_FAIL - module initialization failed               *
+ *                                                                            *
+ * Comment:                                                                   *
+ *                                                                            *
+ ******************************************************************************/
+static void	zbx_module_load_config()
+{
+	static struct cfg_line cfg[] =
+	{
+		{"ModuleTimeout",	&CONFIG_MODULE_TIMEOUT,	TYPE_INT,	PARM_OPT,	1,	600},
+		{"ModuleCloudCacheSize",	&CONFIG_MODULE_CLOUD_CACHE_SIZE,	TYPE_UINT64,	PARM_OPT,	128 * ZBX_KIBIBYTE,	0x7fffffff},
+		{"ZabbixFile",	&CONFIG_ZABBIX_FILE,	TYPE_STRING,	PARM_OPT,	0,	0},
+	};
+
+	parse_cfg_file(CONFIG_FILE, cfg, ZBX_CFG_FILE_REQUIRED, ZBX_CFG_STRICT);
+}
+
 /******************************************************************************
  *                                                                            *
  * Function: zbx_module_init                                                  *
@@ -728,10 +772,13 @@ int	zbx_module_init()
 {
 	/* initialization for dummy.random */
 	srand(time(NULL));
+	zbx_module_load_config();
+	zbx_module_set_defaults();
 
 	key_t shm_key;
 	shm_key = zbx_ftok(CONFIG_FILE, ZBX_IPC_CLOUD_ID);
-	zbx_mem_create(&cloud_mem, shm_key, ZBX_NO_MUTEX, MEM_SIZE, "cloud cache size", "CloudCacheSize", 0);
+	
+	zbx_mem_create(&cloud_mem, shm_key, ZBX_NO_MUTEX, CONFIG_MODULE_CLOUD_CACHE_SIZE, "cloud cache size", "CloudCacheSize", 0);
 
 	deltacloud = __cloud_mem_malloc_func(NULL, sizeof(zbx_deltacloud_t));	
 	memset(deltacloud, 0, sizeof(zbx_deltacloud_t));
