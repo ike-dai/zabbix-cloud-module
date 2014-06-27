@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2014 Daisuke Ikeda
+** Copyright (C) 2014 DAISUKE Ikeda
 **
 ** This program is free software; you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -24,7 +24,6 @@
 #include "log.h"
 #include "zbxalgo.h"
 #include "cfg.h"
-#include <curl/curl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <libdeltacloud/libdeltacloud.h>
@@ -37,7 +36,7 @@
 #define PRIVATE_ADDR_MACRO "{#INSTANCE.PRIVATE_ADDR}"
 #define METRIC_NAME_MACRO "{#METRIC.NAME}"
 #define METRIC_UNIT_MACRO "{#METRIC.UNIT}"
-#define CONFIG_FILE "/etc/zabbix/deltacloud_module.conf"
+#define CONFIG_FILE "/etc/zabbix/cloud_module.conf"
 #define EXPIRE_TIME 60*60*24
 
 int CONFIG_MODULE_TIMEOUT	= 300;
@@ -524,7 +523,6 @@ int	zbx_module_cloud_metric_discovery(AGENT_REQUEST *request, AGENT_RESULT *resu
         } 
 
 
-	zbx_vector_ptr_clean(&metric_info->metrics, (zbx_mem_free_func_t)cloud_metric_shared_free);
 /* metric monitoring */
 	zbx_deltacloud_metric_t *deltacloud_metric = NULL;
 	zbx_deltacloud_metric_value_t *metric_value = NULL;
@@ -539,6 +537,10 @@ int	zbx_module_cloud_metric_discovery(AGENT_REQUEST *request, AGENT_RESULT *resu
 
 	deltacloud_get_metrics_by_instance_id(&api, instance_id, &metric);
 
+	/* clean metrics info */
+	/* ToDo: need to implement the feature to clear metrics for not exsited instance */
+
+	zbx_vector_ptr_clean(&metric_info->metrics, (zbx_mem_free_func_t)cloud_metric_shared_free);
 	if (rc == -1 || metric == NULL)
 	{
 		SET_MSG_RESULT(result, strdup("No Data"));
@@ -869,7 +871,7 @@ static void	cloud_instance_shared_free(zbx_deltacloud_instance_t *instance)
 static void	cloud_metric_info_shared_free(zbx_deltacloud_metric_info_t *metric_info)
 {
 	if (NULL != metric_info->instance_id)
-		cloud_metric_value_shared_free(metric_info->instance_id);
+		__cloud_mem_free_func(metric_info->instance_id);
 	zbx_vector_ptr_clean(&metric_info->metrics, (zbx_mem_free_func_t)cloud_metric_shared_free);
 	zbx_vector_ptr_destroy(&metric_info->metrics);
 	__cloud_mem_free_func(metric_info);
