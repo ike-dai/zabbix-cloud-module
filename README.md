@@ -36,10 +36,10 @@ If you install thin >= 2.0.0, please reinstall thin version 1.6.2
     $ sudo gem uninstall thin
     $ sudo gem install thin --version=1.6.2
 
-## 2. Apply one patch to Deltacloud <https://github.com/ike-dai/deltacloud-core/commit/61b690698c949fb7c92607651f1ctc5e02971df966>
+## 2. Apply one patch to Deltacloud
 
 It is not possible to get AWS CloudWatch metrics from Deltacloud 1.1.3.
-So, please apply patch.
+So, please apply patch <https://github.com/ike-dai/deltacloud-core/commit/61b690698c949fb7c92607651f1ctc5e02971df966>.
 
     $ cd <rubygems dircetory>/deltacloud-core-1.1.3
     $ vim lib/deltacloud/drivers/ec2/ec2_driver.rb
@@ -101,7 +101,7 @@ Complile
 
 Error message
 
-If you get the following error, please recompile libs/zbxmemory/memalloc.c
+    If you get the following error, please recompile libs/zbxmemory/memalloc.c
     gcc -shared -o cloud_module.so cloud_module.c ../../libs/zbxmemory/memalloc.o -I../../../include -ldeltacloud -fPIC
     /usr/bin/ld: ../../libs/zbxmemory/memalloc.o: relocation R_X86_64_32 against `.rodata.str1.8' can not be used when making a shared object; recompile with -fPIC
     ../../libs/zbxmemory/memalloc.o: could not read symbols: Bad value
@@ -119,7 +119,10 @@ Copy the shared library file.
     $ mkdir /usr/lib/zabbix/modules
     $ cp cloud_module.so /usr/lib/zabbix/modules/
 
-## 6. Copy cloud_module.conf.example to /etc/zabbix/cloud_module.conf
+## 6. Copy configurateion file
+
+Please copy cloud_module.conf.example to /etc/zabbix/cloud_module.conf.
+And set values.
 
     $ cp cloud_module.conf.example /etc/zabbix/cloud_module.conf
     $ vim /etc/zabbix/cloud_module.conf
@@ -129,7 +132,9 @@ Copy the shared library file.
 
 Notes: cloud_module.conf must be placed under "/etc/zabbix" directory.
 
-## 7. Set LoadableModulePath,LoadableModule in zabbix_server.conf(or zabbix_agentd.conf)
+## 7. Set LoadableModule configurations
+
+Please set LoadableModulePath,LoadableModule in zabbix_server.conf(or zabbix_agentd.conf)
 
 Loadable Module is used in Zabbix Server or Zabbix Agent.
 When you can use in Zabbix Server(as Simple check item), please edit "zabbix_server.conf".
@@ -160,12 +165,13 @@ For example:
 * Host group: Cloud monitoring
 * Interface: Any (This module does not use interface information.)
 * Templates: Template Cloud Module
-* Macros: 
-** {$DELTACLOUD_DRIVER} -> ec2 (Now this module support only ec2)
-** {$DELTACLOUD_PASSWORD} -> AWS API Secret key
-** {$DELTACLOUD_PROVIDER} -> ap-northeast-1 (support any other region name)
-** {$DELTACLOUD_URL} -> http://localhost:3000/api (please set your deltacloud URL)
-** {$DELTACLOUD_USERNAME} -> AWS API Access key
+* Macros:
+ 
+    {$DELTACLOUD_DRIVER} -> ec2 (Now this module support only ec2)
+    {$DELTACLOUD_PASSWORD} -> AWS API Secret key
+    {$DELTACLOUD_PROVIDER} -> ap-northeast-1 (support any other region name)
+    {$DELTACLOUD_URL} -> http://localhost:3000/api (please set your deltacloud URL)
+    {$DELTACLOUD_USERNAME} -> AWS API Access key
 
 When these settings are finished, monitoring the status of AWS will start automatically.
 
