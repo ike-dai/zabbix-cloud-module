@@ -137,7 +137,9 @@ Notes: cloud_module.conf must be placed under "/etc/zabbix" directory.
 Please set LoadableModulePath,LoadableModule in zabbix_server.conf(or zabbix_agentd.conf)
 
 Loadable Module is used in Zabbix Server or Zabbix Agent.
+
 When you can use in Zabbix Server(as Simple check item), please edit "zabbix_server.conf".
+
 When you can use in Zabbix Agent(as Zabbix Agent item), please edit "zabbix_agentd.conf".
 
     $ vim /etc/zabbix/zabbix_server.conf
@@ -166,7 +168,7 @@ For example:
 * Interface: Any (This module does not use interface information.)
 * Templates: Template Cloud Module
 * Macros:
- 
+
     {$DELTACLOUD_DRIVER} -> ec2 (Now this module support only ec2)
     {$DELTACLOUD_PASSWORD} -> AWS API Secret key
     {$DELTACLOUD_PROVIDER} -> ap-northeast-1 (support any other region name)
