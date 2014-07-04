@@ -268,6 +268,7 @@ static zbx_deltacloud_service_t	*zbx_deltacloud_get_service(const char* url, con
 
 int	zbx_module_cloud_instance_discovery(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
+	zabbix_log(LOG_LEVEL_ERR, "Start cloud.instance.discovery: [cloud_mem used_size: %d]\n", cloud_mem->used_size);
 	zbx_module_item_timeout(CONFIG_MODULE_TIMEOUT);
 	int i;
 	struct zbx_json json;
@@ -399,6 +400,7 @@ int	zbx_module_cloud_instance_discovery(AGENT_REQUEST *request, AGENT_RESULT *re
 
 int	zbx_module_cloud_instance_info(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
+	zabbix_log(LOG_LEVEL_ERR, "Start cloud.instance.info: [cloud_mem used_size: %d]\n", cloud_mem->used_size);
 
 	int	i;
 	char	*url;
@@ -467,6 +469,7 @@ int	zbx_module_cloud_instance_info(AGENT_REQUEST *request, AGENT_RESULT *result)
 			return SYSINFO_RET_OK;
 		}
 	}
+	zabbix_log(LOG_LEVEL_ERR, "Finish cloud.instance.info: [cloud_mem used_size: %d]\n", cloud_mem->used_size);
 	SET_MSG_RESULT(result, strdup("Not match data"));
 	return SYSINFO_RET_FAIL;
 }
@@ -474,6 +477,7 @@ int	zbx_module_cloud_instance_info(AGENT_REQUEST *request, AGENT_RESULT *result)
 int	zbx_module_cloud_metric_discovery(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
 
+	zabbix_log(LOG_LEVEL_ERR, "Start cloud.metric.discovery: [cloud_mem used_size: %d]\n", cloud_mem->used_size);
 	struct zbx_json json;
 	int	i;
 	char	*url;
@@ -629,6 +633,7 @@ int	zbx_module_cloud_metric_discovery(AGENT_REQUEST *request, AGENT_RESULT *resu
 
 int	zbx_module_cloud_metric(AGENT_REQUEST *request, AGENT_RESULT *result)
 {
+	zabbix_log(LOG_LEVEL_ERR, "Start cloud.metric: [cloud_mem used_size: %d]\n", cloud_mem->used_size);
 	int	i,j;
 	char	*url;
 	char	*key;
@@ -714,6 +719,7 @@ int	zbx_module_cloud_metric(AGENT_REQUEST *request, AGENT_RESULT *result)
 			return SYSINFO_RET_OK;
 		}
 	}
+	zabbix_log(LOG_LEVEL_ERR, "Finish cloud.metric: [cloud_mem used_size: %d]\n", cloud_mem->used_size);
 	SET_MSG_RESULT(result, strdup("Not match data"));
 	return SYSINFO_RET_FAIL;
 }
