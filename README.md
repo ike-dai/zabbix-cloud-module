@@ -2,7 +2,7 @@
 
 **CloudModule for Zabbix**
 
-Hybrid Cloud Monitoring Module by using Deltacloud.
+Hybrid Cloud Monitoring Module by using Deltacloud.  
 This tool is for Zabbix Loadable Module.
 
 Zabbix loadable modules is supported over Zabbix 2.2.0.
@@ -22,7 +22,7 @@ Zabbix loadable modules is supported over Zabbix 2.2.0.
 
 ## 1. Install Deltacloud
 
-Deltacloud is made by Ruby.
+Deltacloud is made by Ruby.  
 So, please install ruby (>= 1.9.2).
 
 And, install rubygems.
@@ -31,11 +31,16 @@ You can install deltacloud by using gem command.
 
     $ sudo gem install splite3 deltacloud-core
 
-If you install thin >= 2.0.0, please reinstall thin version 1.6.2
+If you have installed thin >= 2.0.0, please reinstall thin version 1.6.2
 
     $ sudo gem uninstall thin
     $ sudo gem install thin --version=1.6.2
 
+If you have installed haml >= 4.0.5, please reinstall haml version 4.0.4
+
+    $ sudo gem uninstall haml
+    $ sudo gem install haml --version=4.0.4
+ 
 ## 2. Apply one patch to Deltacloud
 
 It is not possible to get AWS CloudWatch metrics from Deltacloud 1.1.3.
@@ -49,17 +54,17 @@ So, please apply patch <https://github.com/ike-dai/deltacloud-core/commit/61b690
 
 ## 3. Start deltacloudd
 
-Please start Deltacloud daemon.
+**Please start Deltacloud daemon.**
 
     $ sudo deltacloudd -i ec2 -p 3000 &
 
 ## 4. Install libdeltacloud-for-cloudmodule
 
-Clone libdeltacloud-for-cloudmodule git repository from GitHub.
+**Clone libdeltacloud-for-cloudmodule git repository from GitHub.**
 
     $ git clone https://github.com/ike-dai/libdeltacloud-for-cloudmodule.git
 
-Complile & Install
+**Complile & Install**
 
     $ sudo yum install libtool
     $ sudo yum install libcurl-devel
@@ -71,7 +76,7 @@ Complile & Install
 
 (As default, this library will be installed in /usr/local/lib.)
 
-Update shared library path.
+**Update shared library path.**
 
     $ sudo vim /etc/ld.so.conf.d/libdeltacloud.conf
     /usr/local/lib
@@ -79,11 +84,11 @@ Update shared library path.
 
 ## 5. Compile & Install CloudModule
 
-Clone CloudModule git repository from GitHub.
+**Clone CloudModule git repository from GitHub.**
 
     $ git clone https://github.com/ike-dai/zabbix-cloud-module.git
 
-Copy Makefile & source code to Zabbix source code directory.
+Copy Makefile & source code to Zabbix source code directory.  
 If you don't have Zabbix source code, please download it.
 
     $ wget http://jaist.dl.sourceforge.net/project/zabbix/ZABBIX%20Latest%20Stable/2.2.4/zabbix-2.2.4.tar.gz
@@ -94,14 +99,14 @@ If you don't have Zabbix source code, please download it.
 
     $ cp -r zabbix-cloud-module ./src/modules/
 
-Complile
+**Complile**
 
     $ cd src/modules/zabbix-cloud-module
     $ make
 
-Error message
+**Error message**  
+If you get the following error, please recompile libs/zbxmemory/memalloc.c
 
-    If you get the following error, please recompile libs/zbxmemory/memalloc.c
     gcc -shared -o cloud_module.so cloud_module.c ../../libs/zbxmemory/memalloc.o -I../../../include -ldeltacloud -fPIC
     /usr/bin/ld: ../../libs/zbxmemory/memalloc.o: relocation R_X86_64_32 against `.rodata.str1.8' can not be used when making a shared object; recompile with -fPIC
     ../../libs/zbxmemory/memalloc.o: could not read symbols: Bad value
@@ -114,7 +119,7 @@ Error message
     $ make
 
 
-Copy the shared library file.
+**Copy the shared library file.**
 
     $ mkdir /usr/lib/zabbix/modules
     $ cp cloud_module.so /usr/lib/zabbix/modules/
@@ -130,17 +135,15 @@ And set values.
     ModuleCloudCacheSize=4M
     ZabbixFile="/etc/zabbix/zabbix_server.conf"
 
-Notes: cloud_module.conf must be placed under "/etc/zabbix" directory.
+**Notes: cloud_module.conf must be placed under "/etc/zabbix" directory.**
 
 ## 7. Set LoadableModule configurations
 
-Please set LoadableModulePath,LoadableModule in zabbix_server.conf(or zabbix_agentd.conf)
-
+Please set LoadableModulePath,LoadableModule in zabbix_server.conf(or zabbix_agentd.conf)  
 Loadable Module is used in Zabbix Server or Zabbix Agent.
 
-When you can use in Zabbix Server(as Simple check item), please edit "zabbix_server.conf".
-
-When you can use in Zabbix Agent(as Zabbix Agent item), please edit "zabbix_agentd.conf".
+* When you can use in Zabbix Server(as Simple check item), please edit "zabbix_server.conf".
+* When you can use in Zabbix Agent(as Zabbix Agent item), please edit "zabbix_agentd.conf".
 
     $ vim /etc/zabbix/zabbix_server.conf
     
@@ -157,7 +160,7 @@ By importing this xml, two templates will be added.
 * Template Cloud Module VM
 
 
-## 9. Add Cloud monitoring host & Set some macro in Zabbix server
+## 9. Add Cloud monitoring host
 
 Add host.
 
@@ -168,12 +171,11 @@ For example:
 * Interface: Any (This module does not use interface information.)
 * Templates: Template Cloud Module
 * Macros:
-
-    {$DELTACLOUD_DRIVER} -> ec2 (Now this module support only ec2)
-    {$DELTACLOUD_PASSWORD} -> AWS API Secret key
-    {$DELTACLOUD_PROVIDER} -> ap-northeast-1 (support any other region name)
-    {$DELTACLOUD_URL} -> http://localhost:3000/api (please set your deltacloud URL)
-    {$DELTACLOUD_USERNAME} -> AWS API Access key
+    * {$DELTACLOUD_DRIVER} -> ec2 (Now this module support only ec2)
+    * {$DELTACLOUD_PASSWORD} -> AWS API Secret key
+    * {$DELTACLOUD_PROVIDER} -> ap-northeast-1 (support any other region name)
+    * {$DELTACLOUD_URL} -> http://localhost:3000/api (please set your deltacloud URL)
+    * {$DELTACLOUD_USERNAME} -> AWS API Access key
 
 When these settings are finished, monitoring the status of AWS will start automatically.
 
@@ -185,7 +187,7 @@ Please send feedback to me.
 
 DAISUKE Ikeda
 
-Twitter: @ike_dai
+Twitter: [@ike_dai](https://twitter.com/ike_dai)
 
 e-mail: <dai.ikd123@gmail.com>
 
