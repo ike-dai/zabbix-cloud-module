@@ -28,7 +28,7 @@
                     <snmp_community/>
                     <snmp_oid/>
                     <key>cloud.instance.discovery[{$DELTACLOUD_URL},{$DELTACLOUD_USERNAME},{$DELTACLOUD_PASSWORD},{$DELTACLOUD_DRIVER},{$DELTACLOUD_PROVIDER}]</key>
-                    <delay>300</delay>
+                    <delay>600</delay>
                     <status>0</status>
                     <allowed_hosts/>
                     <snmpv3_contextname/>
@@ -480,7 +480,7 @@
                     <snmp_community/>
                     <snmp_oid/>
                     <key>cloud.metric.discovery[{$DELTACLOUD_URL},{$DELTACLOUD_USERNAME},{$DELTACLOUD_PASSWORD},{$DELTACLOUD_DRIVER},{$DELTACLOUD_PROVIDER},{HOST.HOST}]</key>
-                    <delay>180</delay>
+                    <delay>300</delay>
                     <status>0</status>
                     <allowed_hosts/>
                     <snmpv3_contextname/>
