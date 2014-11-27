@@ -29,7 +29,7 @@ And, install rubygems.
 
 You can install deltacloud by using gem command.
 
-    $ sudo gem install splite3 deltacloud-core
+    $ sudo gem install sqlite3 deltacloud-core
 
 If you have installed thin >= 2.0.0, please reinstall thin version 1.6.2
 
@@ -124,7 +124,7 @@ If you get the following error, please recompile libs/zbxmemory/memalloc.c
     $ mkdir /usr/lib/zabbix/modules
     $ cp cloud_module.so /usr/lib/zabbix/modules/
 
-## 6. Copy configurateion file
+## 6. Copy configuration file
 
 Please copy cloud_module.conf.example to /etc/zabbix/cloud_module.conf.
 And set values.
